@@ -1,0 +1,6 @@
+[submodule "frontend"]
+	path = frontend
+	url = https://github.com/MyLikita-Health/mylikita_frontend_v3.git
+[submodule "backend"]
+	path = backend
+	url = https://github.com/MyLikita-Health/your-backend-repo.git
