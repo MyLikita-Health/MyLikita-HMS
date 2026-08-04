@@ -1,0 +1,51 @@
+name: Pre-warm Runtime Cache
+
+# The release build (build-installer.yml) downloads ~350 MB of runtimes on a
+# cold cache, which slows every tagged release and hammers the download
+# servers. This job pre-warms the cache nightly on the default branch so a
+# tag push restores it in seconds.
+#
+# Why this works: GitHub caches are branch-scoped, but a cache SAVED on the
+# default branch can be RESTORED by any ref - including tag pushes. The cache
+# key here is byte-identical to the release build's key, and on a cache miss
+# (e.g. a runtime version bump in build-installer.bat) this job downloads the
+# runtimes into the cache path, so actions/cache saves the warm cache at the
+# end of the job.
+
+on:
+  schedule:
+    # 03:17 UTC daily - deliberately off the top of the hour to avoid cron
+    # stampedes with other scheduled workflows.
+    - cron: '17 3 * * *'
+  workflow_dispatch:   # manual pre-warm from the Actions tab
+
+permissions:
+  contents: read
+
+jobs:
+  prewarm:
+    name: Pre-warm runtime downloads
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Key MUST match build-installer.yml exactly, or the release build will
+      # restore a different (or empty) cache. Keep the two in lockstep.
+      - name: Restore runtime cache (or miss -> re-download)
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: deploy/windows-installer/dist/cache
+          key: mylikita-runtime-${{ vars.MYLIKITA_NODE_VERSION || 'v20.19.0' }}-${{ vars.MYLIKITA_MYSQL_VERSION || '8.0.42' }}-${{ hashFiles('deploy/windows-installer/build-installer.bat') }}
+
+      # On a cache hit this is a no-op (the .zips already exist -> DL=0 in
+      # the script). On a miss it downloads all three runtimes into the cache
+      # path; actions/cache saves the populated path at the end of the job.
+      - name: Download runtimes (download-only mode)
+        shell: cmd
+        env:
+          MYLIKITA_DOWNLOAD_ONLY: '1'
+        run: deploy\windows-installer\build-installer.bat

@@ -1,0 +1,741 @@
+name: Build Windows Installer
+
+# Builds the self-contained MyLikita-Setup.exe whenever a version tag
+# (e.g. v1.2.3) is pushed. The installer is extracted and its bundle layout
+# verified (smoke test), then it is run headlessly on a Windows Server VM
+# (install test) before it is attached to the GitHub Release for the tag.
+# Can also be triggered manually from the Actions tab.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build MyLikita-Setup.exe
+    runs-on: windows-latest
+    timeout-minutes: 90
+    outputs:
+      version: ${{ steps.version.outputs.VERSION }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Derive the app version from the tag: v1.2.3 -> 1.2.3
+      - name: Resolve version from tag
+        id: version
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $v = $tag -replace '^v', '' -replace '[^0-9.]', ''
+          if ([string]::IsNullOrWhiteSpace($v)) { $v = '0.0.0' }
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "VERSION=$v"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "TAG=$tag"
+
+      # ~350 MB of runtime downloads are cached between runs. The key includes
+      # a hash of build-installer.bat so bumping the Node/MySQL versions there
+      # always invalidates the cache (otherwise a warm cache silently ships
+      # stale runtimes).
+      - name: Cache runtime downloads
+        uses: actions/cache@v4
+        with:
+          path: deploy/windows-installer/dist/cache
+          key: mylikita-runtime-${{ vars.MYLIKITA_NODE_VERSION || 'v20.19.0' }}-${{ vars.MYLIKITA_MYSQL_VERSION || '8.0.42' }}-${{ hashFiles('deploy/windows-installer/build-installer.bat') }}
+
+      # Install Inno Setup 6 (needed to compile the .exe). Pinned to a
+      # specific release for reproducible builds. The current release line is
+      # hosted on GitHub (jrsoftware/issrc); the legacy files.jrsoftware.org
+      # mirror no longer serves these files (404).
+      - name: Install Inno Setup 6
+        shell: pwsh
+        env:
+          INNO_SETUP_VER: 6.7.3
+        run: |
+          $ProgressPreference = 'SilentlyContinue'
+          # Release tags use underscores: 6.7.3 -> is-6_7_3 (the -replace escapes
+          # the literal dot; don't 'simplify' it to -replace '.', which would
+          # turn every char into an underscore).
+          $url = "https://github.com/jrsoftware/issrc/releases/download/is-$($env:INNO_SETUP_VER -replace '\.', '_')/innosetup-$env:INNO_SETUP_VER.exe"
+          Invoke-WebRequest -Uri $url -OutFile "$env:TEMP\innosetup.exe" -UseBasicParsing
+          $p = Start-Process -FilePath "$env:TEMP\innosetup.exe" -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Inno Setup installer failed (exit $($p.ExitCode))." }
+          $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $iscc)) { throw "ISCC.exe not found at $iscc" }
+          Write-Output "Inno Setup $env:INNO_SETUP_VER installed: $iscc"
+
+      - name: Build installer
+        shell: cmd
+        env:
+          MYLIKITA_VERSION: ${{ steps.version.outputs.VERSION }}
+        run: deploy\windows-installer\build-installer.bat
+
+      # Uploaded so the smoke-test job can download and inspect it. The
+      # release publish happens only after the smoke test passes.
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mylikita-installer
+          path: deploy/windows-installer/dist/output/MyLikita-Setup-*.exe
+          if-no-files-found: error
+          retention-days: 90
+
+  smoke-test:
+    name: Smoke-test installer bundle
+    runs-on: windows-latest
+    timeout-minutes: 30
+    needs: build
+
+    steps:
+      - name: Download installer artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: mylikita-installer
+          path: installer
+          if-no-files-found: error
+
+      # Extracts the built installer and verifies that every component the
+      # post-install script depends on is actually inside the .exe. 7-Zip
+      # (preinstalled on windows-latest) can unpack Inno Setup installers;
+      # innounp's last release only supports Inno Setup up to 6.1.2.
+      - name: Extract and verify installer bundle
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $exe = Get-ChildItem 'installer' -Filter *.exe | Select-Object -First 1
+          if (-not $exe) { throw 'No installer .exe found in the artifact.' }
+          $sizeMB = [math]::Round($exe.Length / 1MB)
+          Write-Output "Installer: $($exe.Name) ($sizeMB MB)"
+          if ($exe.Length -lt 100MB) { throw "Installer is only $sizeMB MB - the embedded runtimes appear to be missing." }
+
+          # Locate 7-Zip (preinstalled on the runner; fall back to choco).
+          # 7-Zip can unpack Inno Setup installers; if it ever fails on a new
+          # Inno Setup release, innounp is the alternative (its latest release
+          # supports Inno Setup up to 6.1.2).
+          $7z = Get-Command 7z -ErrorAction SilentlyContinue
+          if ($7z) { $7z = $7z.Source }
+          if (-not $7z) {
+            $cand = Join-Path ${env:ProgramFiles} '7-Zip\7z.exe'
+            if (Test-Path $cand) { $7z = $cand }
+          }
+          if (-not $7z) {
+            choco install 7zip -y --no-progress | Out-Null
+            $cand = Join-Path ${env:ProgramFiles} '7-Zip\7z.exe'
+            if (Test-Path $cand) { $7z = $cand } else { $7z = (Get-Command 7z).Source }
+          }
+          if (-not $7z) { throw 'Could not locate 7-Zip on the runner.' }
+          Write-Output "Using 7-Zip: $7z"
+
+          $out = Join-Path $env:TEMP 'smoke-extract'
+          if (Test-Path $out) { Remove-Item $out -Recurse -Force }
+          & $7z x -y "-o$out" $exe.FullName | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "7-Zip extraction failed with exit code $LASTEXITCODE." }
+
+          # Find the app root: the folder that directly contains 'backend'
+          $base = $null
+          foreach ($d in Get-ChildItem $out -Directory) {
+            if (Test-Path (Join-Path $d.FullName 'backend')) { $base = $d.FullName; break }
+          }
+          if (-not $base) {
+            if (Test-Path (Join-Path $out 'backend')) { $base = $out }
+            else { throw 'Could not locate the backend folder inside the extracted installer.' }
+          }
+          Write-Output "App root in installer: $base"
+
+          $checks = [ordered]@{
+            'backend/app.js'                       = "$base\backend\app.js"
+            'backend/node_modules (express)'       = "$base\backend\node_modules\express\package.json"
+            'frontend/dist/index.html'             = "$base\frontend\dist\index.html"
+            'runtime/node/node.exe'                = "$base\runtime\node\node.exe"
+            'runtime/mysql/bin/mysqld.exe'         = "$base\runtime\mysql\bin\mysqld.exe"
+            'runtime/nssm/nssm.exe'                = "$base\runtime\nssm\nssm.exe"
+            'database/prime-db.sql'                = "$base\database\prime-db.sql"
+            'scripts/postinstall.cmd'              = "$base\scripts\postinstall.cmd"
+          }
+
+          $failed = $false
+          foreach ($name in $checks.Keys) {
+            if (Test-Path $checks[$name]) { Write-Output "[OK] $name" }
+            else { Write-Output "[MISSING] $name"; $failed = $true }
+          }
+
+          # The frontend must contain the baked server-IP placeholder - this
+          # proves the .env.production override was applied at build time.
+          $placeholderHit = Get-ChildItem "$base\frontend\dist" -Recurse -Filter *.js |
+            Select-String -Pattern '__MYLIKITA_SERVER_IP__' -List -SimpleMatch |
+            Select-Object -First 1
+          if ($placeholderHit) { Write-Output '[OK] frontend bundle contains the server-IP placeholder' }
+          else { Write-Output '[MISSING] server-IP placeholder not found in the frontend bundle'; $failed = $true }
+
+          # Sanity: a native module (bcrypt) must be present and built for win32-x64
+          $bcrypt = Get-ChildItem "$base\backend\node_modules\bcrypt" -Recurse -Filter '*.node' -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+          if ($bcrypt) { Write-Output "[OK] native module bundled: $($bcrypt.Name)" }
+          else { Write-Output '[WARN] no bcrypt native module found in node_modules' }
+
+          if ($failed) { throw 'Smoke test FAILED - see [MISSING] items above.' }
+          Write-Output 'SMOKE TEST PASSED'
+
+  # The FINAL pre-ship check: actually run the installer headlessly on a
+  # Windows Server VM (windows-latest runners are Windows Server 2022/2025)
+  # and verify the app comes up. This exercises the real post-install path:
+  # MySQL init from the embedded ZIP, prime-db.sql import, .env writing,
+  # NSSM service registration, firewall rule, and HTTP serving.
+  #
+  # IMPORTANT: under /VERYSILENT the installer exits 0 even when the internal
+  # post-install script fails (SuppressibleMsgBox is auto-suppressed), so this
+  # job does NOT trust the exit code - it asserts the install.log COMPLETED
+  # marker, the two Windows services, and the live HTTP endpoint.
+  #
+  # The job also exercises the onboarding gate end to end: the seeded facility
+  # must be onboarding_status='pending' right after install, the claim wizard
+  # route must be reachable, claiming flips the facility to 'complete', and the
+  # login/JWT check runs against the CLAIMED admin (phase 2 then proves the
+  # claimed state survives a reinstall).
+  install-test:
+    name: Install-test on Windows Server (headless)
+    runs-on: windows-latest
+    timeout-minutes: 60
+    needs: [build, smoke-test]   # strictly last: after the bundle is verified
+
+    steps:
+      - name: Download installer artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: mylikita-installer
+          path: installer
+          if-no-files-found: error
+
+      - name: Run installer headlessly (silent install)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = Get-ChildItem 'installer' -Filter *.exe | Select-Object -First 1
+          if (-not $exe) { throw 'No installer .exe found in the artifact.' }
+          $sizeMB = [math]::Round($exe.Length / 1MB)
+          Write-Output "Installing: $($exe.Name) ($sizeMB MB)"
+          # The setup log goes to %TEMP% (it is opened before C:\MyLikita
+          # exists on a fresh machine). The post-install log that matters for
+          # the gates below is C:\MyLikita\logs\install.log.
+          $setupLog = Join-Path $env:TEMP 'mylikita-setup.log'
+          $setupArgs = @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-',"/LOG=$setupLog")
+          $p = Start-Process -FilePath $exe.FullName -ArgumentList $setupArgs -Wait -PassThru
+          Write-Output "Installer exit code: $($p.ExitCode)"
+
+      - name: Verify install completed (install.log marker)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $log = 'C:\MyLikita\logs\install.log'
+          if (-not (Test-Path $log)) { throw "install.log not found at $log - the post-install script did not run." }
+          $tail = Get-Content $log -Tail 20
+          Write-Output '--- install.log tail ---'
+          $tail | Write-Output
+          if (-not ($tail -match 'post-install COMPLETED')) { throw 'install.log does not end with the COMPLETED marker - the post-install script failed.' }
+
+      - name: Verify services are running
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($svcName in 'MyLikitaMySQL','MyLikita') {
+            $svc = Get-Service -Name $svcName -ErrorAction SilentlyContinue
+            if (-not $svc) { throw "Service '$svcName' was not registered." }
+            if ($svc.Status -ne 'Running') { throw "Service '$svcName' is $($svc.Status), expected Running." }
+            Write-Output "[OK] $svcName is Running"
+          }
+
+      # The real acceptance check: the app must answer on the app port with
+      # the MyLikita login page. Poll for up to 3 minutes (NSSM can take a few
+      # seconds to start the service after the installer exits).
+      - name: Verify http://localhost:46990 responds
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $deadline = (Get-Date).AddMinutes(3)
+          $ok = $false
+          while ((Get-Date) -lt $deadline) {
+            try {
+              $r = Invoke-WebRequest -Uri 'http://localhost:46990/' -UseBasicParsing -TimeoutSec 15
+              if ($r.StatusCode -eq 200) {
+                Write-Output "HTTP $($r.StatusCode) from localhost:46990"
+                if ($r.Content -match '<title>MyLikita</title>') {
+                  $ok = $true
+                  Write-Output 'Login page title matched.'
+                  break
+                } else {
+                  Write-Output 'Response 200 but title not found - retrying.'
+                }
+              }
+            } catch {
+              Write-Output "Attempt failed: $($_.Exception.Message)"
+            }
+            Start-Sleep -Seconds 10
+          }
+          if (-not $ok) { throw 'http://localhost:46990/ did not return the MyLikita login page.' }
+
+      # The frontend's post-login gate (AuthenticatedContainer) fetches this
+      # endpoint and redirects to /onboarding/claim whenever onboarding_status
+      # is not 'complete'. postinstall.cmd marks the seeded facility (fixed
+      # UUID) as deployment_type='offline', onboarding_status='pending' on a
+      # fresh install, so that state must hold before anything else.
+      - name: Verify seeded facility is pending onboarding (GET /onboarding/status)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $facilityId = '1be0a9da-bff9-4ab6-a36c-edfd8ca88f1a'
+
+          # GET /onboarding/status is tenant-scoped (own facility or super
+          # admin) since the tenant-isolation change, so authenticate first
+          # with the seeded default admin and pass the JWT.
+          $loginBody = @{ username = 'admin'; password = '123456' } | ConvertTo-Json
+          $loginResp = Invoke-RestMethod -Uri 'http://localhost:46990/auth/login' -Method Post -ContentType 'application/json' -Body $loginBody -TimeoutSec 30
+          if (-not $loginResp.success) { throw 'Login failed before status check.' }
+          $headers = @{ Authorization = "Bearer $($loginResp.token.Substring(7))" }
+
+          $deadline = (Get-Date).AddMinutes(2)
+          $status = $null
+          while ((Get-Date) -lt $deadline) {
+            try {
+              $r = Invoke-RestMethod -Uri "http://localhost:46990/onboarding/status/$facilityId" -Headers $headers -TimeoutSec 15
+              if ($r.success) { $status = $r.facility; break }
+            } catch { Start-Sleep -Seconds 5 }
+            Start-Sleep -Seconds 5
+          }
+          if (-not $status) { throw 'GET /onboarding/status did not return the seeded facility.' }
+          if ($status.onboarding_status -ne 'pending') { throw "Expected onboarding_status='pending', got '$($status.onboarding_status)'." }
+          if ($status.deployment_type -ne 'offline') { throw "Expected deployment_type='offline', got '$($status.deployment_type)'." }
+          Write-Output "[OK] Seeded facility pending onboarding (deployment=$($status.deployment_type), onboarding=$($status.onboarding_status))."
+
+      # The real stack test: POST /auth/login with a seeded user and verify a
+      # JWT comes back. This proves MySQL -> Sequelize -> bcrypt -> JWT works
+      # end to end (not just static HTML). This also proves the default admin
+      # can log in WHILE the facility is pending - the exact session the
+      # claim wizard relies on for the redirect flow.
+      #
+      # Credentials: the prime-db.sql dump seeds user 'admin' (status active)
+      # with bcrypt hash of '123456' - verified against the real hash using
+      # the project's own bcryptjs. The login controller also touches the
+      # optional user_sessions / permissions tables, but both lookups are
+      # wrapped in try/catch, so they are non-fatal on a fresh dump.
+      - name: Verify /auth/login returns a JWT
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $body = @{ username = 'admin'; password = '123456' } | ConvertTo-Json
+          $resp = Invoke-RestMethod -Uri 'http://localhost:46990/auth/login' -Method Post -ContentType 'application/json' -Body $body -TimeoutSec 30
+          if (-not $resp.success) { throw 'Login response success=false.' }
+          if (-not ($resp.token -like 'Bearer *')) { throw "No Bearer token in login response: $($resp.token)" }
+          $token = $resp.token.Substring(7)
+          if (($token -split '\.').Count -ne 3) { throw 'Token is not a JWT (expected 3 dot-separated segments).' }
+          Write-Output "[OK] Login succeeded for user '$($resp.user.username)' (id $($resp.user.id)), JWT has 3 segments."
+
+          # Verify the JWT signature with the JWT_SECRET from the installed
+          # .env using the embedded Node + the bundled jsonwebtoken - this
+          # proves the .env wiring and the signing secret both work.
+          $envFile = 'C:\MyLikita\backend\.env'
+          $secretLine = Select-String -Path $envFile -Pattern '^JWT_SECRET=' | Select-Object -First 1
+          if (-not $secretLine) { throw "JWT_SECRET not found in $envFile" }
+          $secret = ($secretLine.Line -replace '^JWT_SECRET=', '').Trim()
+          if (-not $secret) { throw "JWT_SECRET is empty in $envFile" }
+          $node = 'C:\MyLikita\runtime\node\node.exe'
+          $verifyJs = "const jwt=require('C:/MyLikita/backend/node_modules/jsonwebtoken');try{const d=jwt.verify(process.argv[1],process.argv[2]);console.log('JWT_OK username='+d.username+' id='+d.id)}catch(e){console.log('JWT_FAIL '+e.message);process.exit(1)}"
+          # No 2>&1 here: with $ErrorActionPreference='Stop', PowerShell 7.2+
+          # raises NativeCommandError if a redirected native command writes
+          # any stderr. The JS gates on stdout + exit code, so stderr can just
+          # stream to the job log.
+          $out = (& $node -e $verifyJs $token $secret | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0 -or $out -notmatch 'JWT_OK') { throw "JWT signature verification failed: $out" }
+          Write-Output "[OK] JWT verified with JWT_SECRET from .env: $out"
+
+      # =========================================================================
+      # ONBOARDING GATE - asserts the new behavior end to end: the claim wizard
+      # route must be reachable, claiming with the current (default) credentials
+      # flips the facility to 'complete', and the login/JWT check that follows
+      # runs against the CLAIMED admin (the claim replaces the default admin).
+      # =========================================================================
+
+      # 'Login + redirect to /onboarding/claim works': the claim route must be
+      # served by the app (the client-side redirect itself is driven by the
+      # 'pending' status asserted above - a fresh install lands here after the
+      # default admin logs in).
+      - name: Verify claim route is served and claim the facility
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $claimPage = Invoke-WebRequest -Uri 'http://localhost:46990/onboarding/claim' -UseBasicParsing -TimeoutSec 15
+          if ($claimPage.StatusCode -ne 200) { throw "/onboarding/claim did not return the app shell (HTTP $($claimPage.StatusCode))." }
+          Write-Output '[OK] /onboarding/claim is served by the app.'
+
+          # Claim the facility: proves the current (default) credentials,
+          # replaces them with the client-chosen ones, and finalizes the
+          # profile (name, contacts, completed timestamp).
+          $facilityId = '1be0a9da-bff9-4ab6-a36c-edfd8ca88f1a'
+          $body = @{
+            facilityId   = $facilityId
+            name         = 'CI Test Dental Clinic'
+            type         = 'Hospital'
+            address      = 'CI Runner, Windows Server'
+            contactEmail = 'ci@mylikita.test'
+            contactPhone = '08000000000'
+            admin        = @{
+              currentUsername = 'admin'
+              currentPassword = '123456'
+              newUsername     = 'ciadmin'
+              newPassword     = 'Cipass!234'
+            }
+          } | ConvertTo-Json -Depth 5
+          $resp = Invoke-RestMethod -Uri 'http://localhost:46990/onboarding/claim' -Method Put -ContentType 'application/json' -Body $body -TimeoutSec 30
+          if (-not $resp.success) { throw "Claim failed: $($resp | ConvertTo-Json -Depth 5)" }
+
+          # The claim must have flipped the facility to complete. The status
+          # endpoint is tenant-scoped, so authenticate with the admin the claim
+          # just created (their facilityId is the claimed facility) and pass
+          # the JWT — this also proves the new credentials work immediately.
+          $claimLogin = @{ username = 'ciadmin'; password = 'Cipass!234' } | ConvertTo-Json
+          $claimLoginResp = Invoke-RestMethod -Uri 'http://localhost:46990/auth/login' -Method Post -ContentType 'application/json' -Body $claimLogin -TimeoutSec 30
+          if (-not $claimLoginResp.success) { throw 'Login with claimed admin failed before status re-check.' }
+          $stHeaders = @{ Authorization = "Bearer $($claimLoginResp.token.Substring(7))" }
+          $st = Invoke-RestMethod -Uri "http://localhost:46990/onboarding/status/$facilityId" -Headers $stHeaders -TimeoutSec 15
+          $f = $st.facility
+          if ($f.onboarding_status -ne 'complete') { throw "onboarding_status should be 'complete' after claim, got '$($f.onboarding_status)'." }
+          if ($f.deployment_type -ne 'offline') { throw "deployment_type should be 'offline' after claim, got '$($f.deployment_type)'." }
+          if ([string]::IsNullOrWhiteSpace($f.onboarding_completed_at)) { throw 'onboarding_completed_at not set after claim.' }
+          if ($f.contact_email -ne 'ci@mylikita.test') { throw "contact_email not persisted: '$($f.contact_email)'." }
+          Write-Output "[OK] Facility claimed - status=$($f.onboarding_status), step=$($f.onboarding_step), completed=$($f.onboarding_completed_at)."
+
+      # The login/JWT check now runs against the CLAIMED admin. The claim
+      # replaces the seeded 'admin' user in place, so the old credentials must
+      # be rejected and the new ones must produce a verifiable JWT.
+      - name: Verify login/JWT with the claimed admin
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $body = @{ username = 'ciadmin'; password = 'Cipass!234' } | ConvertTo-Json
+          $resp = Invoke-RestMethod -Uri 'http://localhost:46990/auth/login' -Method Post -ContentType 'application/json' -Body $body -TimeoutSec 30
+          if (-not $resp.success) { throw 'Login with the claimed admin returned success=false.' }
+          if (-not ($resp.token -like 'Bearer *')) { throw "No Bearer token for claimed admin: $($resp.token)" }
+          $token = $resp.token.Substring(7)
+          if (($token -split '\\.').Count -ne 3) { throw 'Token is not a JWT (expected 3 dot-separated segments).' }
+
+          # Verify the JWT signature with the installed JWT_SECRET (same
+          # pattern as the pre-claim check).
+          $secretLine = Select-String -Path 'C:\MyLikita\backend\.env' -Pattern '^JWT_SECRET=' | Select-Object -First 1
+          if (-not $secretLine) { throw 'JWT_SECRET not found in .env' }
+          $secret = ($secretLine.Line -replace '^JWT_SECRET=', '').Trim()
+          $node = 'C:\MyLikita\runtime\node\node.exe'
+          $verifyJs = "const jwt=require('C:/MyLikita/backend/node_modules/jsonwebtoken');try{const d=jwt.verify(process.argv[1],process.argv[2]);console.log('JWT_OK username='+d.username)}catch(e){console.log('JWT_FAIL '+e.message);process.exit(1)}"
+          $out = (& $node -e $verifyJs $token $secret | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0 -or $out -notmatch 'JWT_OK') { throw "JWT verification for claimed admin failed: $out" }
+          Write-Output "[OK] Claimed admin logs in and JWT verifies: $out"
+
+          # The old default credentials must now be rejected (the claim
+          # replaced them) - a negative assertion that the claim really took.
+          # Only an AUTH-shaped failure counts as 'rejected'. A 429 (login is
+          # rate-limited) or a 5xx would otherwise be a false pass.
+          $rejected = $false
+          try {
+            $old = @{ username = 'admin'; password = '123456' } | ConvertTo-Json
+            $oldResp = Invoke-RestMethod -Uri 'http://localhost:46990/auth/login' -Method Post -ContentType 'application/json' -Body $old -TimeoutSec 20
+            if (-not $oldResp.success) { $rejected = $true }
+          } catch {
+            $code = 0
+            if ($_.Exception.Response -and $_.Exception.Response.StatusCode) { $code = [int]$_.Exception.Response.StatusCode }
+            if (@(400, 401, 403) -contains $code) { $rejected = $true }
+            else { throw "Unexpected status $code while checking old credentials: $($_.Exception.Message)" }
+          }
+          if (-not $rejected) { throw 'Old default admin admin/123456 still logs in after the claim.' }
+          Write-Output '[OK] Default admin admin/123456 is rejected after the claim.'
+
+      # =========================================================================
+      # SUPER ADMIN MIGRATION + PROMOTE CLI
+      # The installer must ship the super_admin role migration (MyLikita-Setup.iss
+      # bundles backend\* recursively) and run it during install (postinstall.cmd
+      # runs `npx sequelize db:migrate`). Assert the migration's effect in the
+      # real DB, then prove the promote-super-admin CLI works on the installed
+      # server and that a promoted admin passes the super-admin API gate.
+      # =========================================================================
+      - name: Verify super_admin role migration and promote-super-admin CLI
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          function Read-Env($path) {
+            $h = @{}
+            Get-Content $path | ForEach-Object {
+              if ($_ -match '^\s*([A-Za-z0-9_]+)=(.*)$') { $h[$matches[1]] = $matches[2].Trim() }
+            }
+            return $h
+          }
+          $envMap = Read-Env 'C:\MyLikita\backend\.env'
+          $mysql = 'C:\MyLikita\runtime\mysql\bin\mysql.exe'
+          $db    = $envMap['DB_NAME']
+          $pw    = $envMap['DB_PASSWORD']
+          $port  = if ($envMap['DB_PORT']) { $envMap['DB_PORT'] } else { '3306' }
+
+          # 1) The migration ran during install: the super_admin role exists and
+          #    carries the Administrator's permissions (mirrored by the migration).
+          $roleCount = (& $mysql -u root "--password=$pw" "--port=$port" -N -s -e "SELECT COUNT(*) FROM roles WHERE code='super_admin'").Trim()
+          if ($roleCount -ne '1') { throw "super_admin role missing after install (count=$roleCount) - did db:migrate run?" }
+          Write-Output '[OK] super_admin role exists (migration ran during install).'
+
+          $permCount = (& $mysql -u root "--password=$pw" "--port=$port" -N -s -e "SELECT COUNT(*) FROM role_permissions rp JOIN roles r ON rp.role_id=r.id WHERE r.code='super_admin'").Trim()
+          if ([int]$permCount -le 0) { throw "super_admin role has no permissions (count=$permCount) - the permission mirror did not run." }
+          Write-Output "[OK] super_admin role has $permCount permissions (mirrored from Administrator)."
+
+          # 2) Differential test of promote-super-admin. The CLAIMED admin
+          #    'ciadmin' cannot be used here: the claim renames the seeded
+          #    'admin' (privilege 8) in place and does not touch privilege, so
+          #    ciadmin is ALREADY a super admin. Use seeded user 'admin_user'
+          #    instead - privilege 5 (no superAdmin bit), known password
+          #    '123456' (same bcrypt hash as the seeded admin).
+          $target = 'admin_user'
+
+          # 2a) Pre-promote: privilege must NOT have bit 8 (keeps this test
+          #     honest - fails loudly if the seed ever changes), and the API
+          #     must reject them (403) on the super-admin-only registry.
+          $privBefore = (& $mysql -u root "--password=$pw" "--port=$port" -N -s -e "SELECT privilege FROM users WHERE username='$target'").Trim()
+          if ($privBefore -eq '' -or $privBefore -eq $null) { throw "User '$target' not found in the seeded dump." }
+          if (([int]$privBefore -band 8) -eq 8) { throw "$target already has the superAdmin bit (privilege=$privBefore) - the differential test would be vacuous." }
+          Write-Output "[OK] $target starts at privilege $privBefore (no superAdmin bit)."
+
+          $loginBody = @{ username = $target; password = '123456' } | ConvertTo-Json
+          $preLogin = Invoke-RestMethod -Uri 'http://localhost:46990/auth/login' -Method Post -ContentType 'application/json' -Body $loginBody -TimeoutSec 30
+          if (-not $preLogin.success) { throw "Login as '$target' before promote failed." }
+          $preHdr = @{ Authorization = "Bearer $($preLogin.token.Substring(7))" }
+          $got403 = $false
+          try {
+            Invoke-RestMethod -Uri 'http://localhost:46990/hospitals' -Headers $preHdr -TimeoutSec 20 | Out-Null
+          } catch {
+            if ($_.Exception.Response -and [int]$_.Exception.Response.StatusCode -eq 403) { $got403 = $true }
+          }
+          if (-not $got403) { throw "GET /hospitals was NOT 403 for non-super '$target' before promote." }
+          Write-Output '[OK] GET /hospitals correctly returns 403 before promote.'
+
+          # 2b) Run the CLI on the installed server.
+          $node = 'C:\MyLikita\runtime\node\node.exe'
+          Push-Location 'C:\MyLikita\backend'
+          try {
+            $env:DB_HOST     = if ($envMap['DB_HOST']) { $envMap['DB_HOST'] } else { 'localhost' }
+            $env:DB_PORT     = $port
+            $env:DB_USER     = if ($envMap['DB_USER']) { $envMap['DB_USER'] } else { 'root' }
+            $env:DB_PASSWORD = $pw
+            $env:DB_NAME     = $db
+            $env:NODE_ENV    = 'development'
+            # No 2>&1 here: with $ErrorActionPreference='Stop', a redirected
+            # native command that writes stderr raises NativeCommandError. The
+            # CLI gates on exit code; stderr just streams to the job log.
+            & $node scripts/promote-super-admin.js $target | Out-Host
+            if ($LASTEXITCODE -ne 0) { throw "promote-super-admin exited with code $LASTEXITCODE" }
+          } finally {
+            Pop-Location
+            Remove-Item Env:DB_HOST,Env:DB_PORT,Env:DB_USER,Env:DB_PASSWORD,Env:DB_NAME -ErrorAction SilentlyContinue
+          }
+          Write-Output '[OK] promote-super-admin CLI ran successfully on the installed server.'
+
+          # 2c) Post-promote DB state: privilege bit 8, role slug, user_roles link.
+          $priv = (& $mysql -u root "--password=$pw" "--port=$port" -N -s -e "SELECT privilege FROM users WHERE username='$target'").Trim()
+          if (([int]$priv -band 8) -ne 8) { throw "$target privilege after promote is $priv - bit 8 (superAdmin) not set." }
+          Write-Output "[OK] $target privilege is now $priv (bit 8 set, was $privBefore)."
+
+          $role = (& $mysql -u root "--password=$pw" "--port=$port" -N -s -e "SELECT role FROM users WHERE username='$target'").Trim()
+          if ($role -ne 'super_admin') { throw "$target role after promote is '$role', expected 'super_admin'." }
+          Write-Output "[OK] $target role is 'super_admin'."
+
+          $linkCount = (& $mysql -u root "--password=$pw" "--port=$port" -N -s -e "SELECT COUNT(*) FROM user_roles ur JOIN roles r ON ur.role_id=r.id JOIN users u ON ur.user_id=u.id WHERE r.code='super_admin' AND u.username='$target'").Trim()
+          if ($linkCount -ne '1') { throw "$target not linked to the super_admin role in user_roles (count=$linkCount)." }
+          Write-Output "[OK] $target is linked to the super_admin role in user_roles."
+
+          # 2d) End to end: the promoted user can now call the super-admin-only
+          #     facilities registry (GET /hospitals, gated by allowOnly bit 8).
+          $postLogin = Invoke-RestMethod -Uri 'http://localhost:46990/auth/login' -Method Post -ContentType 'application/json' -Body $loginBody -TimeoutSec 30
+          if (-not $postLogin.success) { throw "Login as promoted '$target' failed." }
+          $postHdr = @{ Authorization = "Bearer $($postLogin.token.Substring(7))" }
+          $facilities = Invoke-RestMethod -Uri 'http://localhost:46990/hospitals' -Headers $postHdr -TimeoutSec 20
+          $n = @($facilities).Count
+          if ($n -lt 1) { throw 'GET /hospitals returned no facilities for the promoted super admin.' }
+          Write-Output "[OK] Promoted super admin can list facilities (GET /hospitals returned $n)."
+
+      # =========================================================================
+      # PHASE 2 - REINSTALL TEST
+      # Run the installer a second time over the same install and verify the
+      # database survives: no re-import (install.log shows the skip message),
+      # a marker row written before the reinstall is still there, the table
+      # count did not shrink, and the app + login still work afterwards.
+      # =========================================================================
+
+      - name: Phase 2 - Mark the database before reinstall
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          function Read-Env($path) {
+            $h = @{}
+            Get-Content $path | ForEach-Object {
+              if ($_ -match '^\s*([A-Za-z0-9_]+)=(.*)$') { $h[$matches[1]] = $matches[2].Trim() }
+            }
+            return $h
+          }
+          $envFile = 'C:\MyLikita\backend\.env'
+          if (-not (Test-Path $envFile)) { throw "$envFile not found - install did not write .env." }
+          $envMap = Read-Env $envFile
+          $mysql = 'C:\MyLikita\runtime\mysql\bin\mysql.exe'
+          $db    = $envMap['DB_NAME']
+          $pw    = $envMap['DB_PASSWORD']
+          $port  = if ($envMap['DB_PORT']) { $envMap['DB_PORT'] } else { '3306' }
+          if (-not $db -or -not $pw) { throw 'DB_NAME/DB_PASSWORD missing from .env.' }
+
+          # Write a unique marker row; if the DB is wiped and re-imported on
+          # reinstall, this row disappears and the phase-2 check fails.
+          $sql1 = "CREATE TABLE IF NOT EXISTS reinstall_marker (id INT PRIMARY KEY, note VARCHAR(128)); INSERT INTO reinstall_marker (id, note) VALUES (1, 'PHASE2_MARKER') ON DUPLICATE KEY UPDATE note='PHASE2_MARKER';"
+          & $mysql -u root "--password=$pw" "--port=$port" -e $sql1 $db
+          if ($LASTEXITCODE -ne 0) { throw "Failed to write marker row (exit $LASTEXITCODE)." }
+
+          $before = (& $mysql -u root "--password=$pw" "--port=$port" -N -s -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='$db'").Trim()
+          Set-Content -Path (Join-Path $env:TEMP 'table-count-before.txt') -Value $before
+          Write-Output "[OK] Marker written. Tables before reinstall: $before"
+
+      - name: Phase 2 - Run installer again (silent reinstall)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = Get-ChildItem 'installer' -Filter *.exe | Select-Object -First 1
+          if (-not $exe) { throw 'No installer .exe found in the artifact.' }
+          $setupLog2 = Join-Path $env:TEMP 'mylikita-setup-2.log'
+          $setupArgs = @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-',"/LOG=$setupLog2")
+          $p = Start-Process -FilePath $exe.FullName -ArgumentList $setupArgs -Wait -PassThru
+          Write-Output "Reinstall exit code: $($p.ExitCode)"
+
+      - name: Phase 2 - Verify database survived (no re-import, data intact)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          # install.log appends across runs. Grep the WHOLE file (not a tail
+          # - run 2's section can exceed 40 lines once health-check retries and
+          # IP-bake output land in it). The skip-import message only ever
+          # appears on a reinstall - run 1 imports instead - and COMPLETED
+          # must appear once per run (>= 2 here).
+          $log = 'C:\MyLikita\logs\install.log'
+          if (-not (Test-Path $log)) { throw "install.log not found at $log" }
+          $completedCount = (Select-String -Path $log -Pattern 'post-install COMPLETED' -SimpleMatch).Count
+          if ($completedCount -lt 2) { throw "Expected 2 COMPLETED markers (one per run), found $completedCount." }
+          $skipHit = Select-String -Path $log -Pattern 'skipping import to preserve data' -SimpleMatch
+          if ($skipHit) {
+            Write-Output '[OK] Reinstall skipped the DB import (data preserved).'
+          } else {
+            throw 'Reinstall did NOT skip the DB import - the database was re-imported or wiped.'
+          }
+
+          function Read-Env($path) {
+            $h = @{}
+            Get-Content $path | ForEach-Object {
+              if ($_ -match '^\s*([A-Za-z0-9_]+)=(.*)$') { $h[$matches[1]] = $matches[2].Trim() }
+            }
+            return $h
+          }
+          $envMap = Read-Env 'C:\MyLikita\backend\.env'
+          $mysql = 'C:\MyLikita\runtime\mysql\bin\mysql.exe'
+          $db    = $envMap['DB_NAME']
+          $pw    = $envMap['DB_PASSWORD']
+          $port  = if ($envMap['DB_PORT']) { $envMap['DB_PORT'] } else { '3306' }
+
+          # Marker row must have survived the reinstall.
+          $marker = (& $mysql -u root "--password=$pw" "--port=$port" -N -s -e "SELECT note FROM reinstall_marker WHERE id=1").Trim()
+          if ($marker -ne 'PHASE2_MARKER') { throw "Marker row missing after reinstall (got '$marker') - data was lost." }
+          Write-Output '[OK] Marker row survived the reinstall.'
+
+          # Table count must not have shrunk (a re-import would drop/create).
+          $beforePath = Join-Path $env:TEMP 'table-count-before.txt'
+          $beforeRaw = Get-Content $beforePath -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $beforeRaw) { throw 'Table count snapshot missing - the phase-2 marker step failed earlier.' }
+          $before = $beforeRaw.Trim()
+          $after = (& $mysql -u root "--password=$pw" "--port=$port" -N -s -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='$db'").Trim()
+          Write-Output "Tables: before=$before after=$after"
+          if ($after -lt [int]$before) { throw "Table count dropped from $before to $after - data was lost." }
+
+          # The CLAIMED admin (the claim renamed the seeded 'admin' in place)
+          # must still exist - proving the reinstall preserved post-claim data.
+          $users = (& $mysql -u root "--password=$pw" "--port=$port" -N -s -e "SELECT COUNT(*) FROM users WHERE username='ciadmin'").Trim()
+          if ($users -ne '1') { throw "Claimed admin 'ciadmin' missing after reinstall (count=$users)." }
+          Write-Output '[OK] Claimed admin ciadmin still present.'
+
+          # The guarded postinstall UPDATE must NOT have reset the claimed
+          # facility back to pending on reinstall (the claim survived).
+          $status = (& $mysql -u root "--password=$pw" "--port=$port" -N -s -e "SELECT onboarding_status FROM hospitals WHERE id='1be0a9da-bff9-4ab6-a36c-edfd8ca88f1a'").Trim()
+          if ($status -ne 'complete') { throw "Facility onboarding_status after reinstall is '$status', expected 'complete' - the guarded UPDATE reset it?" }
+          Write-Output "[OK] Facility onboarding_status is still 'complete' after reinstall."
+
+      - name: Phase 2 - Verify services and login still work after reinstall
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($svcName in 'MyLikitaMySQL','MyLikita') {
+            $svc = Get-Service -Name $svcName -ErrorAction SilentlyContinue
+            if (-not $svc) { throw "Service '$svcName' was not registered after reinstall." }
+            if ($svc.Status -ne 'Running') { throw "Service '$svcName' is $($svc.Status), expected Running." }
+            Write-Output "[OK] $svcName is Running"
+          }
+
+          # Wait for the app to come back, then login with the claimed admin
+          # (the seeded 'admin' no longer exists after the claim).
+          $deadline = (Get-Date).AddMinutes(3)
+          $loggedIn = $false
+          while ((Get-Date) -lt $deadline) {
+            try {
+              $body = @{ username = 'ciadmin'; password = 'Cipass!234' } | ConvertTo-Json
+              $resp = Invoke-RestMethod -Uri 'http://localhost:46990/auth/login' -Method Post -ContentType 'application/json' -Body $body -TimeoutSec 20
+              if ($resp.success -and ($resp.token -like 'Bearer *')) {
+                $loggedIn = $true
+                Write-Output '[OK] Login still works after reinstall.'
+                break
+              }
+            } catch {
+              Write-Output "Login attempt failed (retrying): $($_.Exception.Message)"
+            }
+            Start-Sleep -Seconds 10
+          }
+          if (-not $loggedIn) { throw 'Login did not succeed within 3 minutes after reinstall.' }
+
+      # Always upload the install + backend logs so a failing install can be
+      # debugged without re-running the whole job.
+      - name: Upload install diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: install-diagnostics
+          path: |
+            C:\MyLikita\logs\install.log
+            C:\MyLikita\logs\out.log
+            C:\MyLikita\logs\err.log
+            ${{ runner.temp }}\mylikita-setup*.log
+          if-no-files-found: warn
+          retention-days: 14
+
+  release:
+    name: Attach installer to release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [build, smoke-test, install-test]
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write   # required to attach the installer to the release
+
+    steps:
+      - name: Download installer artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: mylikita-installer
+          path: release-assets
+          if-no-files-found: error
+
+      - name: Attach installer to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/MyLikita-Setup-*.exe
+          name: MyLikita ${{ needs.build.outputs.version }}
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
