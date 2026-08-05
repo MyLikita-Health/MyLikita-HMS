@@ -110,6 +110,7 @@ rem connections below agree, even when reusing an existing data directory
         echo character-set-server=utf8mb4
         echo collation-server=utf8mb4_unicode_ci
         echo max_allowed_packet=64M
+        echo log_bin_trust_function_creators=1
         echo [client]
         echo port=!DB_PORT!
     ) > "%MYSQL_DATA%\my.ini"
