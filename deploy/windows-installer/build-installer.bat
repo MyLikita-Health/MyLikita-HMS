@@ -79,6 +79,9 @@ if not "%DOWNLOAD_ONLY%"=="1" (
 echo.
 
 :: ------------------------------------------------------------- downloader --
+:: NOTE: no caret line-continuations and no parens in text inside these
+:: blocks - cmd's block scanner mishandles both (broken quote pairing on
+:: continued lines, and parens in values break the scan).
 set "DL=0"
 if not exist "%CACHE%\node-%NODE_VERSION%-win-x64.zip" set "DL=1"
 if not exist "%CACHE%\mysql-%MYSQL_VERSION%-winx64.zip" set "DL=1"
@@ -86,12 +89,20 @@ if not exist "%CACHE%\nssm-%NSSM_VERSION%.zip" set "DL=1"
 
 if "%DL%"=="1" (
     echo  Downloading runtimes into %CACHE%  one-time ~350 MB total...
-    powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-      "$ProgressPreference='SilentlyContinue';" ^
-      "if (!(Test-Path '%CACHE%\node-%NODE_VERSION%-win-x64.zip')) { Invoke-WebRequest -Uri '%NODE_URL%' -OutFile '%CACHE%\node-%NODE_VERSION%-win-x64.zip' -UseBasicParsing };" ^
-      "if (!(Test-Path '%CACHE%\mysql-%MYSQL_VERSION%-winx64.zip')) { Invoke-WebRequest -Uri '%MYSQL_URL%' -OutFile '%CACHE%\mysql-%MYSQL_VERSION%-winx64.zip' -UseBasicParsing };" ^
-      "if (!(Test-Path '%CACHE%\nssm-%NSSM_VERSION%.zip')) { Invoke-WebRequest -Uri '%NSSM_URL%' -OutFile '%CACHE%\nssm-%NSSM_VERSION%.zip' -UseBasicParsing }"
-    if errorlevel 1 (
+    set "DLFAIL=0"
+    if not exist "%CACHE%\node-%NODE_VERSION%-win-x64.zip" (
+        powershell -NoProfile -ExecutionPolicy Bypass -Command "$ProgressPreference='SilentlyContinue'; Invoke-WebRequest -Uri '%NODE_URL%' -OutFile '%CACHE%\node-%NODE_VERSION%-win-x64.zip' -UseBasicParsing"
+        if errorlevel 1 set "DLFAIL=1"
+    )
+    if not exist "%CACHE%\mysql-%MYSQL_VERSION%-winx64.zip" (
+        powershell -NoProfile -ExecutionPolicy Bypass -Command "$ProgressPreference='SilentlyContinue'; Invoke-WebRequest -Uri '%MYSQL_URL%' -OutFile '%CACHE%\mysql-%MYSQL_VERSION%-winx64.zip' -UseBasicParsing"
+        if errorlevel 1 set "DLFAIL=1"
+    )
+    if not exist "%CACHE%\nssm-%NSSM_VERSION%.zip" (
+        powershell -NoProfile -ExecutionPolicy Bypass -Command "$ProgressPreference='SilentlyContinue'; Invoke-WebRequest -Uri '%NSSM_URL%' -OutFile '%CACHE%\nssm-%NSSM_VERSION%.zip' -UseBasicParsing"
+        if errorlevel 1 set "DLFAIL=1"
+    )
+    if "%DLFAIL%"=="1" (
         echo  [ERROR] Download failed. Check internet access / URLs above.
         exit /b 1
     )
