@@ -56,21 +56,25 @@ if not exist "%CACHE%" mkdir "%CACHE%"
 if not exist "%RUNTIME%" mkdir "%RUNTIME%"
 
 :: ----------------------------------------------------- locate Inno Setup ---
+:: Hoist %ProgramFiles(x86)% OUT of the block: the parens inside that
+:: variable NAME break cmd's block parser ('not was unexpected at this
+:: time.'), so it is expanded on a plain line first.
+set "PF86=%ProgramFiles(x86)%"
+set "PF=%ProgramFiles%"
 set "ISCC="
 if not "%DOWNLOAD_ONLY%"=="1" (
-    where ISCC >nul 2>&1 && set "ISCC=ISCC"
+    for %%p in ("%PF86%\Inno Setup 6\ISCC.exe" "%PF%\Inno Setup 6\ISCC.exe") do if exist "%%~p" set "ISCC=%%~p"
     if not defined ISCC (
-        for %%p in ("%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe" "%ProgramFiles%\Inno Setup 6\ISCC.exe") do (
-            if exist "%%~p" set "ISCC=%%~p"
-        )
+        where ISCC >nul 2>&1
+        if not errorlevel 1 set "ISCC=ISCC"
     )
     if not defined ISCC (
         echo [ERROR] Inno Setup 6 (ISCC.exe) not found.
         echo         Install it from https://jrsoftware.org/isinfo.php and re-run.
         exit /b 1
     )
-    rem %ISCC% would expand at block-parse time (before where/for set it) -
-    rem use !ISCC! so the echoed value is the one actually found.
+    rem !ISCC! (not %ISCC%) so the echoed value is the one actually found
+    rem after the where/for above (%%-expansion happens at block-parse time).
     echo  [OK] Inno Setup compiler: !ISCC!
 )
 echo.
