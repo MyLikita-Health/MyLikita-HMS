@@ -165,7 +165,9 @@ if exist ".env.production" (
     echo VITE_API_URL=http://__MYLIKITA_SERVER_IP__:46990
 ) > ".env.production"
 
-call npm install --no-audit --no-fund
+rem ckeditor4-react peers react ^18 but the app pins react ^16 - the lockfile
+rem resolved with lax peer rules, so a clean npm 7+ install needs legacy peers.
+call npm install --no-audit --no-fund --legacy-peer-deps
 if errorlevel 1 (
     echo  [ERROR] Frontend npm install failed.
     if defined SAVED_ENV_PROD copy /y "%CACHE%\env.production.saved" ".env.production" >nul
