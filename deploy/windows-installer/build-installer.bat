@@ -56,14 +56,16 @@ if not exist "%CACHE%" mkdir "%CACHE%"
 if not exist "%RUNTIME%" mkdir "%RUNTIME%"
 
 :: ----------------------------------------------------- locate Inno Setup ---
-:: Hoist %ProgramFiles(x86)% OUT of the block: the parens inside that
-:: variable NAME break cmd's block parser ('not was unexpected at this
-:: time.'), so it is expanded on a plain line first.
+:: Use DELAYED expansion (!PF86!) for the Inno Setup paths INSIDE the block:
+:: cmd expands %%VAR%% at parse time, so %%PF86%% would inject "Program
+:: Files (x86)" - parens in the VALUE that break the block scanner even
+:: inside quotes ('not was unexpected at this time.'). !PF86! expands at
+:: execution time, after the block structure is parsed, and is safe.
 set "PF86=%ProgramFiles(x86)%"
 set "PF=%ProgramFiles%"
 set "ISCC="
 if not "%DOWNLOAD_ONLY%"=="1" (
-    for %%p in ("%PF86%\Inno Setup 6\ISCC.exe" "%PF%\Inno Setup 6\ISCC.exe") do if exist "%%~p" set "ISCC=%%~p"
+    for %%p in ("!PF86!\Inno Setup 6\ISCC.exe" "!PF!\Inno Setup 6\ISCC.exe") do if exist "%%~p" set "ISCC=%%~p"
     if not defined ISCC (
         where ISCC >nul 2>&1
         if not errorlevel 1 set "ISCC=ISCC"

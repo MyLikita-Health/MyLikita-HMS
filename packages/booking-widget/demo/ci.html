@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>@mylikita/booking-widget — CI harness</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background: #0f172a; color: #e2e8f0; padding: 24px; }
+  h1 { font-size: 16px; margin: 0 0 8px; color: #f8fafc; }
+  #ci-log { white-space: pre-wrap; font-size: 12px; color: #94a3b8; min-height: 60px; margin: 0 0 20px; }
+  #booking { max-width: 420px; }
+</style>
+</head>
+<body data-ci-state="loading">
+  <h1>@mylikita/booking-widget — CI harness</h1>
+  <pre id="ci-log"></pre>
+  <div id="booking"></div>
+
+  <!-- The bundle ships in the same package; served by ci/serve-static.mjs -->
+  <script src="../dist/mylikita-booking-widget.js"></script>
+  <script>
+    // ── CI harness ──────────────────────────────────────────────────────────
+    // Mounts the widget against a REAL relay (no mock), auto-fills and submits
+    // the form, and records a machine-readable outcome on <body> data-*
+    // attributes that the CI step greps from a --dump-dom capture.
+    //
+    // Query params (all optional except relay/key/facility):
+    //   relay    relay base URL, e.g. http://127.0.0.1:46995
+    //   key      the facility's website_key (public id)
+    //   facility facilityId the widget books for
+    //   extref   fixed external_ref (idempotency). Re-running with the SAME
+    //            extref replays the original booking (relay §4) — that is how
+    //            the CI confirm-phase poll reaches 'confirmed'.
+    //   dt       fixed datetime-local value (overrides "now + 2h") so phase A
+    //            and phase B submit an identical slot.
+    (function () {
+      const q = new URLSearchParams(location.search);
+      const relayUrl = q.get('relay') || '';
+      const websiteKey = q.get('key') || '';
+      const facilityId = q.get('facility') || '';
+      const extRef = q.get('extref') || ('CIW-' + Date.now().toString(36).toUpperCase());
+      const fixedDt = q.get('dt');
+      const out = document.body;
+      const logEl = document.getElementById('ci-log');
+
+      // Extra keys are written as data-ci-<Key> (data-ci-ref, data-ci-result,
+      // data-ci-extref, ...) so the CI grep pattern is uniform: every machine
+      // readable attribute starts with data-ci-.
+      function setState(state, extra) {
+        out.dataset.ciState = state;
+        if (extra) {
+          for (const [k, v] of Object.entries(extra)) {
+            out.dataset['ci' + k.charAt(0).toUpperCase() + k.slice(1)] = String(v);
+          }
+        }
+        document.title = 'CI:' + state;
+        logEl.textContent = 'state=' + state + ' ' + JSON.stringify(extra || {}) + '\n' + logEl.textContent;
+      }
+
+      function fail(where, err) {
+        setState('error', { where: where, error: (err && err.message) ? err.message : String(err) });
+      }
+
+      try {
+        const widget = MyLikitaBookingWidget.createBookingWidget(document.getElementById('booking'), {
+          relayUrl: relayUrl,
+          websiteKey: websiteKey,
+          facilityId: facilityId,
+          providers: [],            // "No preference" — provider mapping is optional
+          pollIntervalMs: 1000,
+          maxTries: 30,
+          externalRef: function () { return extRef; },   // fixed idempotency key
+          onBooking: function (b) { setState('booked', { ref: b.booking_ref, extref: extRef }); },
+          onStatus: function (s) {
+            if (s.status === 'pending_confirmation') {
+              setState('pending', { ref: s.booking_ref || '', extref: extRef });
+            } else {
+              setState('terminal', { result: s.status, ref: s.booking_ref || '', extref: extRef });
+            }
+          },
+          onError: function (e) { fail('onError', e); },
+        });
+
+        // Fill the form (widget ids: mlw-<name>) and submit. When a fixed dt
+        // is supplied (CI passes the SAME dt to phase A and phase B) use it
+        // verbatim; otherwise default to now + 2h.
+        const pad = (n) => String(n).padStart(2, '0');
+        const dtVal = fixedDt
+          ? fixedDt
+          : (() => {
+              const d = new Date(Date.now() + 2 * 3600 * 1000);
+              return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) +
+                'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+            })();
+
+        document.getElementById('mlw-name').value = 'CI Widget Patient';
+        document.getElementById('mlw-phone').value = '08012340000';
+        document.getElementById('mlw-email').value = 'ci.widget@mylikita.test';
+        document.getElementById('mlw-datetime').value = dtVal;
+        document.getElementById('mlw-notes').value = 'CI harness booking';
+        setState('submitted', { extref: extRef, dt: dtVal });
+
+        const form = document.querySelector('.mylikita-widget__form');
+        form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+      } catch (err) {
+        fail('mount', err);
+      }
+    })();
+  </script>
+</body>
+</html>

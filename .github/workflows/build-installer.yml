@@ -11,6 +11,10 @@ name: Build Windows Installer
 # the installed server at it, books through the website key, and asserts the
 # full website-booking loop (relay_in_master -> appt_master source='website'
 # -> status change -> appt_sync_outbox -> relay_out_master -> website poll).
+# The final B4 step drives the SHIPPED @mylikita/booking-widget package in
+# headless Chrome against the real relay: the widget books, the booking lands
+# in appt_master, staff confirm it, and a second widget run (same external_ref
+# = idempotent replay) polls the relay to 'confirmed'.
 
 on:
   push:
@@ -1069,6 +1073,129 @@ jobs:
           if ($poll.status -ne 'confirmed') { throw "Website poll shows '$($poll.status)', expected 'confirmed'." }
           Write-Output "[OK] Website poll sees status='confirmed' (appt_ref=$($poll.appt_ref)) - full relay loop verified."
 
+      - name: B4 - Widget end-to-end (headless Chrome vs the real relay)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $keys = Get-Content (Join-Path $env:TEMP 'relay-keys.json') -Raw | ConvertFrom-Json
+          $facilityId = '1be0a9da-bff9-4ab6-a36c-edfd8ca88f1a'
+          $extRef = "CI-WIDGET-$([guid]::NewGuid().ToString('N').Substring(0,12))"
+          Set-Content -Path (Join-Path $env:TEMP 'relay-widget-extref.txt') -Value $extRef
+
+          function Read-Env($path) {
+            $h = @{}
+            Get-Content $path | ForEach-Object {
+              if ($_ -match '^\s*([A-Za-z0-9_]+)=(.*)$') { $h[$matches[1]] = $matches[2].Trim() }
+            }
+            return $h
+          }
+          $envMap = Read-Env 'C:\MyLikita\backend\.env'
+          $mysql = 'C:\MyLikita\runtime\mysql\bin\mysql.exe'
+          $db = $envMap['DB_NAME']; $pw = $envMap['DB_PASSWORD']
+          $dbPort = if ($envMap['DB_PORT']) { $envMap['DB_PORT'] } else { '3306' }
+
+          # Build the widget bundle on the runner (esbuild installs in seconds).
+          $wdir = Join-Path $env:GITHUB_WORKSPACE 'packages\booking-widget'
+          Push-Location $wdir
+          npm install --no-save esbuild --no-audit --no-fund | Out-Null
+          if ($LASTEXITCODE -ne 0) { Pop-Location; throw "esbuild install failed (exit $LASTEXITCODE)." }
+          npm run build
+          if ($LASTEXITCODE -ne 0) { Pop-Location; throw "widget build failed (exit $LASTEXITCODE)." }
+          Pop-Location
+
+          # Serve the package (harness + bundle) on :47000 with the embedded node.
+          $node = 'C:\MyLikita\runtime\node\node.exe'
+          $sp = Start-Process -FilePath $node -ArgumentList 'ci\serve-static.mjs' -WorkingDirectory $wdir `
+            -RedirectStandardOutput 'C:\MyLikita\logs\widget-serve-out.log' `
+            -RedirectStandardError 'C:\MyLikita\logs\widget-serve-err.log' -PassThru -WindowStyle Hidden
+          $serveUrl = 'http://127.0.0.1:47000/demo/ci.html'
+          $deadline = (Get-Date).AddSeconds(30); $up = $false
+          while ((Get-Date) -lt $deadline) {
+            try { $r = Invoke-WebRequest -Uri $serveUrl -UseBasicParsing -TimeoutSec 5; if ($r.StatusCode -eq 200) { $up = $true; break } } catch {}
+            Start-Sleep -Seconds 2
+          }
+          if (-not $up) { throw 'Static server did not come up - see C:\MyLikita\logs\widget-serve-err.log' }
+          Write-Output '[OK] Widget static server up on :47000.'
+
+          $chrome = 'C:\Program Files\Google\Chrome\Application\chrome.exe'
+          if (-not (Test-Path $chrome)) { throw "Chrome not found at $chrome" }
+          $dt = (Get-Date).AddHours(2).ToString('yyyy-MM-ddTHH:mm')
+          $pageUrl = $serveUrl + '?relay=' + [uri]::EscapeDataString('http://127.0.0.1:46995') +
+            '&key=' + $keys.website_key + '&facility=' + $facilityId + '&extref=' + $extRef + '&dt=' + $dt
+          $chromeArgs = @('--headless=new','--disable-gpu','--no-sandbox','--disable-dev-shm-usage','--window-size=1280,900')
+
+          # Login once up front (reused for the pull, the confirm, the push).
+          $loginBody = @{ username = 'ciadmin'; password = 'Cipass!234' } | ConvertTo-Json
+          $login = Invoke-RestMethod -Uri 'http://localhost:46990/auth/login' -Method Post -ContentType 'application/json' -Body $loginBody -TimeoutSec 30
+          if (-not $login.success) { throw 'Login failed before the widget phase A.' }
+          $hdr = @{ Authorization = "Bearer $($login.token.Substring(7))" }
+
+          # PHASE A: the widget books through the REAL relay (fresh Chrome
+          # profile). Assert on the booking REF, not the state: the widget sets
+          # 'booked' on create and then flips to 'pending' on the first poll,
+          # so by dump time (after the virtual-time budget) it is 'pending' -
+          # the ref attribute is present in BOTH states.
+          $dumpA = Join-Path $env:TEMP 'widget-dump-a.html'
+          & $chrome @chromeArgs '--user-data-dir=C:\MyLikita\logs\chrome-widget-a' '--virtual-time-budget=30000' '--dump-dom' $pageUrl 2>$null | Out-File -FilePath $dumpA -Encoding utf8
+          $dumpAText = Get-Content $dumpA -Raw
+          if ($dumpAText -notmatch 'data-ci-ref="MLB-') { throw "Widget did not book via the real relay:`n$($dumpAText.Substring(0, [Math]::Min(3000, $dumpAText.Length)))" }
+          Write-Output '[OK] Phase A - widget submitted a booking through the real relay.'
+
+          # Pull it into appt_master. Nothing triggers the hospital pull except
+          # the 2-min cron or an explicit sync-now, so drive sync-now in a
+          # bounded loop (same pattern as the sibling B4 step) BEFORE asserting
+          # the row - otherwise the query would race the cron.
+          $deadline = (Get-Date).AddMinutes(3); $pulled = $false; $skipReason = $null
+          while ((Get-Date) -lt $deadline) {
+            try {
+              $sn = Invoke-RestMethod -Uri 'http://localhost:46990/settings/relay/sync-now' -Method Post -Headers $hdr -ContentType 'application/json' -Body '{}' -TimeoutSec 60
+              Write-Output "sync-now -> $($sn | ConvertTo-Json -Compress -Depth 4)"
+              if ($sn.success -and $sn.data.skipped -and $sn.data.reason -eq 'not_configured') { $skipReason = $sn.data.reason; break }
+              if ($sn.success -and $sn.data.pulled -ge 1) { $pulled = $true; break }
+            } catch {
+              Write-Output "sync-now attempt failed (retrying): $($_.Exception.Message)"
+            }
+            Start-Sleep -Seconds 10
+          }
+          if ($skipReason) { throw "sync-now skipped: $skipReason - relay not configured on the server." }
+          if (-not $pulled) { throw 'The relay pull did not import the widget booking within 3 minutes.' }
+
+          # The booking must be in appt_master as a WEBSITE row.
+          $row = (& $mysql -u root "--password=$pw" "--port=$dbPort" -N -s -e "SELECT id, source, status FROM appt_master WHERE external_ref='$extRef' LIMIT 1" $db).Trim()
+          if ($LASTEXITCODE -ne 0) { throw "MySQL query failed while checking the widget booking (exit $LASTEXITCODE)." }
+          if (-not $row) { throw "No appt_master row for external_ref=$extRef - the widget booking was not imported by the pull." }
+          $parts = $row -split "`t"
+          if ($parts[1] -ne 'website') { throw "source is '$($parts[1])', expected 'website'." }
+          Write-Output "[OK] Widget booking in appt_master id=$($parts[0]) source=$($parts[1]) status=$($parts[2])."
+
+          # PHASE B: staff confirm, push to the relay, then a fresh widget run
+          # (same extref = idempotent replay of the SAME booking) must poll to
+          # 'confirmed' - the full loop with the shipped widget code.
+          $conf = Invoke-RestMethod -Uri "http://localhost:46990/appointments/$($parts[0])/status" -Method Put -Headers $hdr -ContentType 'application/json' -Body (@{ status = 'confirmed' } | ConvertTo-Json) -TimeoutSec 30
+          if (-not $conf.success -or $conf.data.status -ne 'confirmed') { throw "Confirm failed: $($conf | ConvertTo-Json -Depth 4)" }
+          $sn = Invoke-RestMethod -Uri 'http://localhost:46990/settings/relay/sync-now' -Method Post -Headers $hdr -ContentType 'application/json' -Body '{}' -TimeoutSec 60
+          if (-not $sn.success) { throw "sync-now failed while pushing the widget status: $($sn.error)" }
+          Write-Output '[OK] Widget booking confirmed + pushed to the relay.'
+
+          # The hospital->relay push is NOT guaranteed synchronous, so wait for
+          # the outbox status to land on the relay before phase B - otherwise
+          # the widget's poll budget (30s virtual) could exhaust first.
+          $deadline = (Get-Date).AddMinutes(2); $pushed = $false
+          while ((Get-Date) -lt $deadline) {
+            $st = (& $mysql -u root "--password=$pw" "--port=$dbPort" -N -s -e "SELECT status FROM mylikita_relay.relay_out_master WHERE external_ref='$extRef' ORDER BY id DESC LIMIT 1").Trim()
+            if ($LASTEXITCODE -ne 0) { throw "MySQL query failed while polling relay_out_master (exit $LASTEXITCODE)." }
+            if ($st -eq 'confirmed') { $pushed = $true; break }
+            Start-Sleep -Seconds 10
+          }
+          if (-not $pushed) { throw "relay_out_master did not reach 'confirmed' for $extRef before phase B." }
+          Write-Output '[OK] Relay has the confirmed status - launching phase B.'
+
+          $dumpB = Join-Path $env:TEMP 'widget-dump-b.html'
+          & $chrome @chromeArgs '--user-data-dir=C:\MyLikita\logs\chrome-widget-b' '--virtual-time-budget=30000' '--dump-dom' $pageUrl 2>$null | Out-File -FilePath $dumpB -Encoding utf8
+          $dumpBText = Get-Content $dumpB -Raw
+          if ($dumpBText -notmatch 'data-ci-result="confirmed"') { throw "Widget poll did not reach confirmed:`n$($dumpBText.Substring(0, [Math]::Min(3000, $dumpBText.Length)))" }
+          Write-Output '[OK] Phase B - widget polled the relay to confirmed. Full widget loop verified.'
+
       # Always upload the install + backend logs so a failing install can be
       # debugged without re-running the whole job.
       - name: Upload install diagnostics
@@ -1082,7 +1209,11 @@ jobs:
             C:\MyLikita\logs\err.log
             C:\MyLikita\logs\relay-out.log
             C:\MyLikita\logs\relay-err.log
+            C:\MyLikita\logs\widget-serve-out.log
+            C:\MyLikita\logs\widget-serve-err.log
             ${{ runner.temp }}\mylikita-setup*.log
+            ${{ runner.temp }}\widget-dump-a.html
+            ${{ runner.temp }}\widget-dump-b.html
           if-no-files-found: warn
           retention-days: 14
 
