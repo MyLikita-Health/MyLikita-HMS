@@ -93,13 +93,22 @@ jobs:
 
       # Uploaded so the smoke-test job can download and inspect it. The
       # release publish happens only after the smoke test passes.
+      # NOTE: two SEPARATE artifacts on purpose - upload-artifact with multiple
+      # paths re-roots the artifact at their least common ancestor (dist/),
+      # nesting the .exe under output/ and breaking the consumers' non-recursive
+      # Get-ChildItem lookups. Each artifact below is flat.
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
           name: mylikita-installer
-          path: |
-            deploy/windows-installer/dist/output/MyLikita-Setup-*.exe
-            deploy/windows-installer/dist/bundle-manifest.json
+          path: deploy/windows-installer/dist/output/MyLikita-Setup-*.exe
+          if-no-files-found: error
+
+      - name: Upload bundle manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: mylikita-bundle-manifest
+          path: deploy/windows-installer/dist/bundle-manifest.json
           if-no-files-found: error
           retention-days: 90
 
@@ -114,6 +123,13 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: mylikita-installer
+          path: installer
+          if-no-files-found: error
+
+      - name: Download bundle manifest
+        uses: actions/download-artifact@v4
+        with:
+          name: mylikita-bundle-manifest
           path: installer
           if-no-files-found: error
 
