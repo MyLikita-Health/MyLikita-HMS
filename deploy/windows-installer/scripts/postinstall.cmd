@@ -95,12 +95,21 @@ if !errorlevel! equ 0 (
     :: always rewrite my.ini with the chosen port so the service and the
     :: connections below agree, even when reusing an existing data directory
     call :log "Writing MySQL configuration (port !DB_PORT!)..."
+    :: MySQL option files treat backslash as an ESCAPE - "runtime" contains
+    :: \r (carriage return), so basedir=C:\...\runtime\mysql would make
+    :: mysqld abort at startup (the service fails with 3534 and reports no
+    :: error). Write the paths with forward slashes - the standard Windows
+    :: my.ini form - and send the MySQL error log somewhere the install
+    :: diagnostics artifact collects.
+    set "MYSQL_DIR_FWD=%MYSQL_DIR:\=/%"
+    set "MYSQL_DATA_FWD=%MYSQL_DATA:\=/%"
+    set "LOGS_DIR_FWD=%LOGS_DIR:\=/%"
     (
         echo [mysqld]
-        echo basedir="%MYSQL_DIR%"
-        echo datadir="%MYSQL_DATA%"
+        echo basedir=%MYSQL_DIR_FWD%
+        echo datadir=%MYSQL_DATA_FWD%
+        echo log-error=%LOGS_DIR_FWD%/mysql-error.log
         echo port=!DB_PORT!
-        echo default-authentication-plugin=mysql_native_password
         echo character-set-server=utf8mb4
         echo collation-server=utf8mb4_unicode_ci
         echo max_allowed_packet=64M
@@ -165,11 +174,9 @@ if "!TABLE_COUNT!"=="0" (
     rem  - the dump's own CREATE DATABASE prime and USE prime lines would
     rem    land all data in the wrong schema; drop them and import below
     rem    targets !DB_NAME! explicitly
-    powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-      "$c = [IO.File]::ReadAllText('%SQL_FILE%');" ^
-      "$c = $c -replace 'NO_AUTO_CREATE_USER,', '' -replace ',NO_AUTO_CREATE_USER', '' -replace 'NO_AUTO_CREATE_USER', '';" ^
-      "$c = $c -replace '(?m)^CREATE DATABASE.*?;\r?\n', '' -replace '(?m)^USE `prime`;\r?\n', '';" ^
-      "[IO.File]::WriteAllText('%APP_ROOT%\database\prime-db.mysql8.sql', $c, (New-Object System.Text.UTF8Encoding($false)))" >> "%INSTALL_LOG%" 2>&1
+    rem single line on purpose: caret continuations inside a block mangle
+    rem cmd's quote pairing (the build script hit the same trap)
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "$c = [IO.File]::ReadAllText('%SQL_FILE%'); $c = $c -replace 'NO_AUTO_CREATE_USER,', '' -replace ',NO_AUTO_CREATE_USER', '' -replace 'NO_AUTO_CREATE_USER', ''; $c = $c -replace '(?m)^CREATE DATABASE.*?;\r?\n', '' -replace '(?m)^USE `prime`;\r?\n', ''; [IO.File]::WriteAllText('%APP_ROOT%\database\prime-db.mysql8.sql', $c, (New-Object System.Text.UTF8Encoding($false)))" >> "%INSTALL_LOG%" 2>&1
     if errorlevel 1 (
         call :log "[ERROR] Could not sanitize prime-db.sql for MySQL 8."
         exit /b 1

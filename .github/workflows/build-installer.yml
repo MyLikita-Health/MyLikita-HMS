@@ -1182,6 +1182,7 @@ jobs:
           name: install-diagnostics
           path: |
             C:\MyLikita\logs\install.log
+            C:\MyLikita\logs\mysql-error.log
             C:\MyLikita\logs\out.log
             C:\MyLikita\logs\err.log
             C:\MyLikita\logs\relay-out.log
