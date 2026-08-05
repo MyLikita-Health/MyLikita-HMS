@@ -23,6 +23,9 @@ set "MYSQL_DIR=%APP_ROOT%\runtime\mysql"
 set "MYSQL_DATA=%APP_ROOT%\mysql-data"
 set "NSSM=%APP_ROOT%\runtime\nssm\nssm.exe"
 set "LOGS_DIR=%APP_ROOT%\logs"
+set "MYSQL_DIR_FWD=%MYSQL_DIR:\=/%"
+set "MYSQL_DATA_FWD=%MYSQL_DATA:\=/%"
+set "LOGS_DIR_FWD=%LOGS_DIR:\=/%"
 set "SQL_FILE=%APP_ROOT%\database\prime-db.sql"
 set "DB_NAME=mylikita_db"
 set "APP_PORT=46990"
@@ -92,23 +95,17 @@ if !errorlevel! equ 0 (
         call :log "MySQL initialized."
     )
 
-    :: always rewrite my.ini with the chosen port so the service and the
-    :: connections below agree, even when reusing an existing data directory
+rem always rewrite my.ini with the chosen port so the service and the
+rem connections below agree, even when reusing an existing data directory
     call :log "Writing MySQL configuration (port !DB_PORT!)..."
-    :: MySQL option files treat backslash as an ESCAPE - "runtime" contains
-    :: \r (carriage return), so basedir=C:\...\runtime\mysql would make
-    :: mysqld abort at startup (the service fails with 3534 and reports no
-    :: error). Write the paths with forward slashes - the standard Windows
-    :: my.ini form - and send the MySQL error log somewhere the install
-    :: diagnostics artifact collects.
-    set "MYSQL_DIR_FWD=%MYSQL_DIR:\=/%"
-    set "MYSQL_DATA_FWD=%MYSQL_DATA:\=/%"
-    set "LOGS_DIR_FWD=%LOGS_DIR:\=/%"
+    rem MySQL option files treat backslash as an escape char, so runtime
+    rem paths would break mysqld. Use forward slashes - the standard
+    rem Windows my.ini form - and log errors to the diagnostics file.
     (
         echo [mysqld]
-        echo basedir=%MYSQL_DIR_FWD%
-        echo datadir=%MYSQL_DATA_FWD%
-        echo log-error=%LOGS_DIR_FWD%/mysql-error.log
+        echo basedir=!MYSQL_DIR_FWD!
+        echo datadir=!MYSQL_DATA_FWD!
+        echo log-error=!LOGS_DIR_FWD!/mysql-error.log
         echo port=!DB_PORT!
         echo character-set-server=utf8mb4
         echo collation-server=utf8mb4_unicode_ci
@@ -175,7 +172,7 @@ if "!TABLE_COUNT!"=="0" (
     rem    land all data in the wrong schema; drop them and import below
     rem    targets !DB_NAME! explicitly
     rem single line on purpose: caret continuations inside a block mangle
-    rem cmd's quote pairing (the build script hit the same trap)
+    rem cmd's quote pairing [the build script hit the same trap]
     powershell -NoProfile -ExecutionPolicy Bypass -Command "$c = [IO.File]::ReadAllText('%SQL_FILE%'); $c = $c -replace 'NO_AUTO_CREATE_USER,', '' -replace ',NO_AUTO_CREATE_USER', '' -replace 'NO_AUTO_CREATE_USER', ''; $c = $c -replace '(?m)^CREATE DATABASE.*?;\r?\n', '' -replace '(?m)^USE `prime`;\r?\n', ''; [IO.File]::WriteAllText('%APP_ROOT%\database\prime-db.mysql8.sql', $c, (New-Object System.Text.UTF8Encoding($false)))" >> "%INSTALL_LOG%" 2>&1
     if errorlevel 1 (
         call :log "[ERROR] Could not sanitize prime-db.sql for MySQL 8."
@@ -187,7 +184,7 @@ if "!TABLE_COUNT!"=="0" (
         call :log "[ERROR] Database import failed. See log above."
         exit /b 1
     )
-    :: mark the baseline migration as applied (mirrors entrypoint.sh)
+rem mark the baseline migration as applied [mirrors entrypoint.sh]
     "%MYSQL_DIR%\bin\mysql.exe" -u root -p!DB_PASS! --port=!DB_PORT! "!DB_NAME!" -e "CREATE TABLE IF NOT EXISTS SequelizeMeta (name VARCHAR(255) NOT NULL PRIMARY KEY); INSERT IGNORE INTO SequelizeMeta VALUES ('20200101000000-initial-schema.js');" >> "%INSTALL_LOG%" 2>&1
     call :log "Baseline schema imported."
 ) else (
@@ -233,13 +230,13 @@ call :log "Writing backend\.env..."
     echo MAIL_USER=
     echo MAIL_PASS=
     echo.
-    rem ---- SMS via Termii (https://termii.com) - leave empty to disable ----
+    rem ---- SMS via Termii [https://termii.com] - leave empty to disable ----
     echo TERMII_API_KEY=
     echo TERMII_SENDER_ID=MyLikita
     rem ---- WhatsApp via Termii - set TERMII_WHATSAPP_ID to enable WhatsApp reminders ----
     echo TERMII_WHATSAPP_ID=
     echo.
-    rem ---- Email via Resend (https://resend.com) - leave empty to disable ----
+    rem ---- Email via Resend [https://resend.com] - leave empty to disable ----
     echo RESEND_API_KEY=
     echo EMAIL_FROM=MyLikita ^<hello@mylikita.clinic^>
     echo.
@@ -266,10 +263,10 @@ popd
 call :log "Database migrations complete."
 
 :: Mark the seeded facility (Amisal Dental Care, the default login used by
-:: offline installs) as needing onboarding, and flag the deployment as
-:: offline. The post-login redirect then sends the first admin to the
-:: /onboarding/claim wizard, which finalizes the facility profile and
-:: replaces the shared default admin credentials (admin/123456).
+rem offline installs] as needing onboarding, and flag the deployment as
+rem offline. The post-login redirect then sends the first admin to the
+rem /onboarding/claim wizard, which finalizes the facility profile and
+rem replaces the shared default admin credentials [admin/123456].
 "%MYSQL_DIR%\bin\mysql.exe" -u root -p!DB_PASS! --port=!DB_PORT! "!DB_NAME!" -e "UPDATE hospitals SET deployment_type='offline', onboarding_status='pending', onboarding_step=0 WHERE id='1be0a9da-bff9-4ab6-a36c-edfd8ca88f1a' AND (onboarding_status IS NULL OR onboarding_status='' OR deployment_type IS NULL);" >> "%INSTALL_LOG%" 2>&1
 if errorlevel 1 (
     call :log "[WARN] Could not mark seeded facility for onboarding (id may differ on this install)."
@@ -277,7 +274,7 @@ if errorlevel 1 (
     call :log "Seeded facility marked for first-run onboarding (offline)."
 )
 
-:: ============================================== NSSM WINDOWS SERVICE ========
+rem ============================================== NSSM WINDOWS SERVICE ========
 call :log "Registering MyLikita Windows service..."
 "%NSSM%" status MyLikita >nul 2>&1
 if !errorlevel! equ 0 (
@@ -303,13 +300,13 @@ if errorlevel 1 (
     exit /b 1
 )
 
-:: =================================================== FIREWALL ===============
+rem =================================================== FIREWALL ===============
 call :log "Opening firewall port !APP_PORT!..."
 netsh advfirewall firewall delete rule name="MyLikita" >nul 2>&1
 netsh advfirewall firewall add rule name="MyLikita" dir=in action=allow protocol=TCP localport=!APP_PORT! >nul
 call :log "Firewall rule added."
 
-:: ===================================================== START + CHECK ========
+rem ===================================================== START + CHECK ========
 call :log "Starting MyLikita service..."
 "%NSSM%" start MyLikita >> "%INSTALL_LOG%" 2>&1
 call :sleep 10
@@ -330,7 +327,7 @@ if errorlevel 1 (
 )
 call :log "Final health check: !HEALTH!"
 
-:: ===================================================== CREDENTIALS =========
+rem ===================================================== CREDENTIALS =========
 (
     echo MyLikita is installed and running.
     echo.
@@ -351,17 +348,17 @@ call :log "URL: http://!SERVER_IP!:!APP_PORT!/"
 call :log "============================================================"
 exit /b 0
 
-:: ============================================================ helpers ======
+rem ============================================================ helpers ======
 :log
 echo [%time%] %* >> "%INSTALL_LOG%"
 echo %*
 exit /b 0
 
 :sleep
-:: The built-in `timeout` command fails with "Input redirection is not
-:: supported" when stdin is not attached to a console - which is exactly how
-:: the installer's hidden `cmd /c postinstall.cmd` runs (and how CI runs it).
-:: Use PowerShell Start-Sleep instead so delays always work headless.
+rem The built-in `timeout` command fails with "Input redirection is not
+rem supported" when stdin is not attached to a console - which is exactly how
+rem the installer's hidden `cmd /c postinstall.cmd` runs [and how CI runs it].
+rem Use PowerShell Start-Sleep instead so delays always work headless.
 powershell -NoProfile -Command "Start-Sleep -Seconds %~1" >nul 2>&1
 exit /b 0
 
@@ -374,8 +371,8 @@ if not exist "%~1" (
 exit /b 0
 
 :find_free_port
-:: find a free TCP port if the current DB_PORT is taken by another MySQL
-:: instance; starts from the persisted port (.env) or 3306 by default
+rem find a free TCP port if the current DB_PORT is taken by another MySQL
+rem instance; starts from the persisted port [.env] or 3306 by default
 :find_port_loop
 netstat -ano | findstr /c:":!DB_PORT! " | findstr /i "LISTENING" >nul 2>&1
 if !errorlevel! neq 0 exit /b 0
