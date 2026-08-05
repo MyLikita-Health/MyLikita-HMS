@@ -1,0 +1,5 @@
+# Windows tooling requires CRLF: cmd.exe misparses LF-only .bat/.cmd files
+# (parenthesized blocks and labels break), which failed the installer build.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.iss text eol=crlf
