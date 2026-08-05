@@ -32,10 +32,12 @@ jobs:
         with:
           fetch-depth: 0
           # The installer bundles frontend/ (Vite build) and backend/ from the
-          # checkout, so both submodules must be materialised. GITHUB_TOKEN
-          # clones same-org private submodules; if that ever 403s, set an org
-          # PAT secret and point token: ${{ secrets.MYLIKITA_PAT }} here.
+          # checkout, so both submodules must be materialised. GITHUB_TOKEN is
+          # scoped to THIS repo only and cannot clone the private submodules
+          # in bits-his-backend / mylikita_frontend_v3, so checkout uses the
+          # MYLIKITA_PAT secret (same token as the remotes in .gitmodules).
           submodules: recursive
+          token: ${{ secrets.MYLIKITA_PAT }}
 
       # Derive the app version from the tag: v1.2.3 -> 1.2.3
       - name: Resolve version from tag
@@ -222,6 +224,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
+          token: ${{ secrets.MYLIKITA_PAT }}
 
       - name: Download installer artifact
         uses: actions/download-artifact@v4
