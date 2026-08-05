@@ -1174,21 +1174,25 @@ jobs:
           Write-Output '[OK] Phase B - widget polled the relay to confirmed. Full widget loop verified.'
 
       # Always upload the install + backend logs so a failing install can be
-      # debugged without re-running the whole job.
-      - name: Upload install diagnostics
+      # debugged without re-running the whole job. upload-artifact@v4 needs
+      # every path under ONE root — C:\MyLikita\logs and runner.temp are
+      # different trees, so split them into two artifacts (a mixed list made
+      # the upload crash with 'rootDirectory is not a parent directory').
+      - name: Upload install diagnostics (C:\MyLikita\logs)
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: install-diagnostics
+          path: C:\MyLikita\logs\*
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload install diagnostics (runner temp)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: install-diagnostics-temp
           path: |
-            C:\MyLikita\logs\install.log
-            C:\MyLikita\logs\mysql-error.log
-            C:\MyLikita\logs\out.log
-            C:\MyLikita\logs\err.log
-            C:\MyLikita\logs\relay-out.log
-            C:\MyLikita\logs\relay-err.log
-            C:\MyLikita\logs\widget-serve-out.log
-            C:\MyLikita\logs\widget-serve-err.log
             ${{ runner.temp }}\mylikita-setup*.log
             ${{ runner.temp }}\widget-dump-a.html
             ${{ runner.temp }}\widget-dump-b.html
