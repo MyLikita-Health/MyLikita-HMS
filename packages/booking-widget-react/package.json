@@ -35,6 +35,9 @@
     "healthcare"
   ],
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "peerDependencies": {
     "react": ">=16.8.0",
     "react-dom": ">=16.8.0"
@@ -43,6 +46,9 @@
     "@mylikita/booking-widget": "0.1.0"
   },
   "devDependencies": {
-    "esbuild": "^0.24.0"
+    "esbuild": "^0.24.0",
+    "jsdom": "^16.7.0",
+    "react": "16.14.0",
+    "react-dom": "16.14.0"
   }
 }

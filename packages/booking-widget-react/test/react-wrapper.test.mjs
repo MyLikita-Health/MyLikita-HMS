@@ -21,10 +21,25 @@ import os from 'node:os';
 const require = createRequire(import.meta.url);
 const here = path.dirname(fileURLToPath(import.meta.url));
 const pkgRoot = path.resolve(here, '..');
-const frontendNM = path.resolve(pkgRoot, '../../frontend/node_modules');
+
+// Resolve test deps (jsdom / esbuild / react / react-dom) from the package's
+// OWN node_modules first — that is what `npm ci` in CI creates, so the
+// prepublishOnly build+test runs standalone on a fresh runner. Locally the
+// package may not be installed yet, so fall back to the monorepo's
+// frontend/node_modules (the frontend app already installs them).
+function resolveNM(name) {
+  const own = path.join(pkgRoot, 'node_modules', name);
+  if (fs.existsSync(path.join(own, 'package.json'))) return own;
+  const frontendNM = path.resolve(pkgRoot, '../../frontend/node_modules');
+  const fe = path.join(frontendNM, name);
+  if (fs.existsSync(path.join(fe, 'package.json'))) return fe;
+  throw new Error(`cannot resolve ${name}: install the package deps (npm ci) or use the monorepo frontend install`);
+}
 
 // ── 1. jsdom ────────────────────────────────────────────────────────────────
-const { JSDOM } = require(path.join(frontendNM, 'jsdom'));
+// resolveNM returns the package DIR — require() resolves the package main
+// from it (appending index.js would miss packages whose main lives elsewhere).
+const { JSDOM } = require(resolveNM('jsdom'));
 const dom = new JSDOM('<!doctype html><html><body></body></html>', {
   url: 'http://localhost/',
   pretendToBeVisual: true,
@@ -58,7 +73,7 @@ let esbuild;
 try {
   esbuild = require('esbuild');
 } catch (_) {
-  esbuild = require(path.join(frontendNM, 'esbuild'));
+  esbuild = require(resolveNM('esbuild'));
 }
 
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mlw-react-test-'));
@@ -71,10 +86,12 @@ await esbuild.build({
   outfile: outFile,
   logLevel: 'silent',
   alias: {
-    'react': path.join(frontendNM, 'react/index.js'),
-    'react-dom': path.join(frontendNM, 'react-dom/index.js'),
+    'react': path.join(resolveNM('react'), 'index.js'),
+    'react-dom': path.join(resolveNM('react-dom'), 'index.js'),
     '@mylikita/booking-widget': path.resolve(pkgRoot, '../booking-widget/src/index.js'),
   },
+  // esbuild resolves 'react' inside react-dom's CJS from the aliased entry,
+  // which works because the alias points at the real package index.
 });
 
 // ── 3. run the harness ──────────────────────────────────────────────────────

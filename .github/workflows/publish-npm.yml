@@ -1,0 +1,163 @@
+name: Publish npm Packages
+
+# Publishes @mylikita/booking-widget and @mylikita/booking-widget-react to
+# the public npm registry whenever a SEMVER tag (e.g. v0.1.0) is pushed.
+#
+# Gate: everything is skipped unless the NPM_TOKEN secret exists. Before the
+# first run you must:
+#   1. create the npm account + @mylikita org (only org members can publish
+#      to the scope) — npmjs.com → Organizations,
+#   2. generate a Publish token and store it as the NPM_TOKEN repo secret.
+#
+# Ordering matters: the React wrapper depends on the vanilla widget (exact
+# version 0.1.0), so the widget is published FIRST, then the wrapper — and
+# only if the widget publish succeeded.
+#
+# Tag pattern is semver-only ('v[0-9]*.[0-9]*.[0-9]*') so the installer
+# test tag v0.0.1-test never triggers a publish. Add a dry-run switch for
+# manual testing from the Actions tab (unpkg verification is skipped then).
+#
+# Subsequent releases: bump the version in BOTH package.json files (and the
+# react wrapper's `@mylikita/booking-widget` dependency to match), then push
+# the matching tag — npm refuses to republish an existing version.
+
+on:
+  push:
+    tags:
+      - 'v[0-9]*.[0-9]*.[0-9]*'
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: 'npm publish --dry-run (no upload, no unpkg check)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish-widget:
+    name: Publish @mylikita/booking-widget
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # No NPM_TOKEN yet (scope not created / secret not added) → skip quietly
+    # instead of failing the run.
+    if: ${{ secrets.NPM_TOKEN != '' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node + npm registry auth
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: 'https://registry.npmjs.org/'
+          scope: '@mylikita'
+
+      # No lockfiles are committed for these packages yet (the react wrapper's
+      # dep @mylikita/booking-widget only exists on the registry after the
+      # first publish), so use npm install, not npm ci.
+      - name: Install deps
+        working-directory: packages/booking-widget
+        run: npm install --no-audit --no-fund
+
+      # prepublishOnly would run automatically on `npm publish`, but running
+      # it explicitly first gives a cleaner failure point + a build artifact
+      # to inspect. (npm install fetches esbuild from devDependencies.)
+      - name: Build + test (prepublishOnly equivalent)
+        working-directory: packages/booking-widget
+        run: npm run build && npm test
+
+      - name: Publish to npm
+        working-directory: packages/booking-widget
+        if: ${{ github.event.inputs.dry-run != 'true' }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public
+
+      - name: Dry-run publish (no upload)
+        working-directory: packages/booking-widget
+        if: ${{ github.event.inputs.dry-run == 'true' }}
+        run: npm publish --dry-run
+
+      # unpkg serves the package's `unpkg` field — the IIFE bundle. Assert the
+      # global it exposes is actually reachable at the CDN URL. Only for real
+      # tag publishes (a dry run has nothing on the registry, and a manual
+      # dispatch's GITHUB_REF_NAME is a branch name, not a version). Retried
+      # because registry→CDN propagation can lag a few seconds.
+      - name: Verify unpkg CDN serves the IIFE bundle
+        if: ${{ github.event.inputs.dry-run != 'true' && github.event_name == 'push' }}
+        shell: bash
+        run: |
+          # npm versions have no leading 'v' (tag v0.1.0 → version 0.1.0)
+          ver="${GITHUB_REF_NAME#v}"
+          url="https://unpkg.com/@mylikita/booking-widget@${ver}"
+          ok=""
+          for i in 1 2 3 4 5; do
+            body="$(curl -fsSL "$url" 2>/dev/null)" || true
+            if printf '%s' "$body" | grep -q 'MyLikitaBookingWidget'; then ok=1; break; fi
+            sleep 2
+          done
+          [ -n "$ok" ] \
+            && echo "[OK] unpkg serves the IIFE (global MyLikitaBookingWidget)" \
+            || { echo "[FAIL] unpkg $url did not expose MyLikitaBookingWidget after 5 tries"; exit 1; }
+
+  publish-widget-react:
+    name: Publish @mylikita/booking-widget-react
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: publish-widget
+    if: ${{ secrets.NPM_TOKEN != '' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node + npm registry auth
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: 'https://registry.npmjs.org/'
+          scope: '@mylikita'
+
+      # The wrapper's devDependencies (react, react-dom, jsdom, esbuild) are
+      # installed here so build + test run standalone on the runner. npm
+      # install also fetches the @mylikita/booking-widget dependency — which
+      # the widget job published just before this job runs.
+      - name: Install deps
+        working-directory: packages/booking-widget-react
+        run: npm install --no-audit --no-fund
+
+      - name: Build + test (prepublishOnly equivalent)
+        working-directory: packages/booking-widget-react
+        run: npm run build && npm test
+
+      - name: Publish to npm
+        working-directory: packages/booking-widget-react
+        if: ${{ github.event.inputs.dry-run != 'true' }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public
+
+      - name: Dry-run publish (no upload)
+        working-directory: packages/booking-widget-react
+        if: ${{ github.event.inputs.dry-run == 'true' }}
+        run: npm publish --dry-run
+
+      - name: Verify unpkg CDN serves the ESM bundle
+        if: ${{ github.event.inputs.dry-run != 'true' && github.event_name == 'push' }}
+        shell: bash
+        run: |
+          # npm versions have no leading 'v' (tag v0.1.0 → version 0.1.0)
+          ver="${GITHUB_REF_NAME#v}"
+          url="https://unpkg.com/@mylikita/booking-widget-react@${ver}"
+          ok=""
+          for i in 1 2 3 4 5; do
+            body="$(curl -fsSL "$url" 2>/dev/null)" || true
+            if printf '%s' "$body" | grep -q 'createBookingWidget'; then ok=1; break; fi
+            sleep 2
+          done
+          [ -n "$ok" ] \
+            && echo "[OK] unpkg serves the bundle (exports createBookingWidget)" \
+            || { echo "[FAIL] unpkg $url did not expose createBookingWidget after 5 tries"; exit 1; }

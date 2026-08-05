@@ -35,6 +35,9 @@
     "healthcare"
   ],
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "devDependencies": {
     "esbuild": "^0.24.0"
   }
