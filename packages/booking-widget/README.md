@@ -40,6 +40,10 @@ import { createBookingWidget } from '@mylikita/booking-widget';
 createBookingWidget(document.getElementById('booking'), { relayUrl, websiteKey, facilityId });
 ```
 
+**React sites:** use [`@mylikita/booking-widget-react`](/packages/booking-widget-react) — the
+same widget as a `<BookingWidget relayUrl=… websiteKey=… facilityId=… />`
+component (all options are props, SSR-safe, imperative ref).
+
 ## Options
 
 | Option | Type | Default | Description |
