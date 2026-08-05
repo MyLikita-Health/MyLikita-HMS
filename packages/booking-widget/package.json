@@ -1,0 +1,41 @@
+{
+  "name": "@mylikita/booking-widget",
+  "version": "0.1.0",
+  "description": "Drop-in appointment booking widget for MyLikita hospital websites. Submits bookings through the MyLikita relay (POST /v1/bookings) and polls status (GET /v1/bookings/:ref). Themeable via CSS variables.",
+  "type": "module",
+  "main": "dist/mylikita-booking-widget.cjs",
+  "module": "dist/mylikita-booking-widget.esm.js",
+  "browser": "dist/mylikita-booking-widget.js",
+  "unpkg": "dist/mylikita-booking-widget.min.js",
+  "exports": {
+    ".": {
+      "import": "./dist/mylikita-booking-widget.esm.js",
+      "require": "./dist/mylikita-booking-widget.cjs",
+      "default": "./dist/mylikita-booking-widget.esm.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "node build.mjs",
+    "build:demo": "node build-demo.mjs",
+    "test": "node test/widget.test.js",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "keywords": [
+    "mylikita",
+    "appointment",
+    "booking",
+    "widget",
+    "hospital",
+    "relay",
+    "healthcare"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "esbuild": "^0.24.0"
+  }
+}

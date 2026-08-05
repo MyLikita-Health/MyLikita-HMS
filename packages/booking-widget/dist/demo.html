@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>@mylikita/booking-widget — demo</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    padding: 40px 16px;
+  }
+  .demo { width: 100%; max-width: 860px; }
+  h1 { font-size: 20px; margin: 0 0 4px; color: #0f172a; }
+  .tagline { font-size: 13px; color: #64748b; margin: 0 0 20px; }
+  .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+  @media (max-width: 760px) { .cards { grid-template-columns: 1fr; } }
+  .panel {
+    background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; padding: 18px;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, .06);
+  }
+  .panel h2 { font-size: 14px; margin: 0 0 10px; color: #334155; }
+  .theme-row { display: flex; gap: 8px; margin-top: 8px; }
+  .theme-row button {
+    font: inherit; font-size: 12px; padding: 6px 12px; border-radius: 8px; cursor: pointer;
+    border: 1px solid #cbd5e1; background: #f8fafc; color: #334155;
+  }
+  .theme-row button:hover { border-color: #0d6efd; color: #0d6efd; }
+  .log {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px; color: #475569; background: #f8fafc;
+    border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; height: 130px;
+    overflow: auto; margin: 12px 0 0; white-space: pre-wrap;
+  }
+  .log b { color: #0d6efd; font-weight: 600; }
+</style>
+</head>
+<body>
+  <div class="demo">
+    <h1>@mylikita/booking-widget — offline demo</h1>
+    <p class="tagline">
+      Runs entirely in the page against an in-page mock of the MyLikita relay: submit a booking,
+      watch the widget poll, and see it flip to <b>confirmed</b> after two polls. No backend needed.
+    </p>
+
+    <div class="cards">
+      <div class="panel">
+        <h2>Widget (default theme)</h2>
+        <div id="booking"></div>
+      </div>
+
+      <div class="panel">
+        <h2>Second widget (custom theme) + live log</h2>
+        <div id="booking2"></div>
+        <div class="theme-row">
+          <button data-theme="default">Reset theme</button>
+          <button data-theme="teal">Teal</button>
+          <button data-theme="sunset">Sunset</button>
+        </div>
+        <pre class="log" id="log"></pre>
+      </div>
+    </div>
+  </div>
+
+  <script>
+/*! @mylikita/booking-widget v0.1.0 | MIT */
+var MyLikitaBookingWidget=(()=>{var M=Object.defineProperty;var me=Object.getOwnPropertyDescriptor;var ce=Object.getOwnPropertyNames;var ue=Object.prototype.hasOwnProperty;var pe=(i,e)=>{for(var t in e)M(i,t,{get:e[t],enumerable:!0})},fe=(i,e,t,r)=>{if(e&&typeof e=="object"||typeof e=="function")for(let a of ce(e))!ue.call(i,a)&&a!==t&&M(i,a,{get:()=>e[a],enumerable:!(r=me(e,a))||r.enumerable});return i};var ge=i=>fe(M({},"__esModule",{value:!0}),i);var ke={};pe(ke,{DEFAULT_THEME:()=>D,STATUS_COPY:()=>E,TERMINAL_STATUSES:()=>ee,createBooking:()=>k,createBookingWidget:()=>ae,fetchStatus:()=>h,newExternalRef:()=>T,pollStatus:()=>S,resolveTheme:()=>C,statusCopy:()=>N});async function k({relayUrl:i,websiteKey:e,payload:t,signal:r}){let a=await fetch(`${X(i)}/v1/bookings`,{method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${e}`},body:JSON.stringify(t),signal:r}),o=await Z(a);if(a.status===409)return{ok:!0,duplicate:!0,booking_ref:o?.booking_ref,error:o?.message};if(!a.ok)throw Q(a.status,o,"create");return{ok:!0,duplicate:!1,booking_ref:o?.booking_ref,status:o?.status||"pending_confirmation"}}async function h({relayUrl:i,websiteKey:e,bookingRef:t,signal:r}){let a=await fetch(`${X(i)}/v1/bookings/${encodeURIComponent(t)}`,{headers:{Authorization:`Bearer ${e}`},signal:r}),o=await Z(a);if(!a.ok)throw Q(a.status,o,"status");return{booking_ref:o?.booking_ref,status:o?.status||"pending_confirmation",appt_ref:o?.appt_ref||null}}async function S(i,{intervalMs:e=5e3,maxTries:t=12,signal:r}={}){for(let a=0;a<t;a++){if(r?.aborted)return{status:"aborted",resolved:!1,data:null};let o=await i();if(o.status!=="pending_confirmation")return{status:o.status,resolved:!0,data:o};a<t-1&&await we(e,r)}return{status:"pending_confirmation",resolved:!1,data:null}}function T(){return`BK-${Date.now()}-${Math.random().toString(36).slice(2,6)}`}function X(i){return String(i||"").replace(/\/+$/,"")}function Q(i,e,t){let r=new Error(e?.message||e?.error||`Relay ${t} failed (HTTP ${i})`);return r.code=e?.error||"http_error",r.status=i,r}async function Z(i){try{return await i.json()}catch{return null}}function we(i,e){return new Promise(t=>{if(e?.aborted)return t();let r=()=>{clearTimeout(a),t()},a=setTimeout(()=>{e?.removeEventListener("abort",r),t()},i);e?.addEventListener("abort",r,{once:!0})})}var E={pending_confirmation:{title:"Request received",message:"We've received your booking request \u2014 we'll confirm shortly.",kind:"info"},confirmed:{title:"Appointment confirmed",message:"Your appointment is confirmed. See you at the clinic!",kind:"success"},cancelled:{title:"Appointment cancelled",message:"This appointment was cancelled. Please contact the clinic if this was unexpected.",kind:"danger"},rescheduled:{title:"Appointment rescheduled",message:"This appointment was moved \u2014 the new time was sent to you.",kind:"info"},no_show:{title:"Missed appointment",message:"This appointment was marked as missed.",kind:"danger"},expired:{title:"Request expired",message:"This booking request expired \u2014 please call the clinic to book.",kind:"danger"},poll_error:{title:"Something went wrong",message:"We could not check your booking right now. Please try again shortly.",kind:"danger"}};function N(i){return E[i]||E.pending_confirmation}var ee=["confirmed","cancelled","rescheduled","no_show","expired"];var D={primary:"#0d6efd",primaryDark:"#0b5ed7",primaryText:"#ffffff",bg:"#ffffff",text:"#1e293b",muted:"#64748b",border:"#e2e8f0",danger:"#dc3545",success:"#15803d",radius:10,font:"system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif"};function C(i={}){let e={...D,...i||{}};return{"--mlw-primary":e.primary,"--mlw-primary-dark":e.primaryDark,"--mlw-primary-text":e.primaryText,"--mlw-bg":e.bg,"--mlw-text":e.text,"--mlw-muted":e.muted,"--mlw-border":e.border,"--mlw-danger":e.danger,"--mlw-success":e.success,"--mlw-radius":`${e.radius}px`,"--mlw-font":e.font}}var te=`
+.mylikita-widget {
+  --mlw-primary: #0d6efd;
+  --mlw-primary-dark: #0b5ed7;
+  --mlw-primary-text: #ffffff;
+  --mlw-bg: #ffffff;
+  --mlw-text: #1e293b;
+  --mlw-muted: #64748b;
+  --mlw-border: #e2e8f0;
+  --mlw-danger: #dc3545;
+  --mlw-success: #15803d;
+  --mlw-radius: 10px;
+  --mlw-font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  font-family: var(--mlw-font);
+  color: var(--mlw-text);
+  background: var(--mlw-bg);
+  border: 1px solid var(--mlw-border);
+  border-radius: calc(var(--mlw-radius) + 2px);
+  padding: 22px;
+  max-width: 480px;
+  box-sizing: border-box;
+  line-height: 1.5;
+}
+.mylikita-widget *,
+.mylikita-widget *::before,
+.mylikita-widget *::after { box-sizing: border-box; }
+
+.mylikita-widget__title {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0 0 4px;
+  color: var(--mlw-text);
+}
+.mylikita-widget__subtitle {
+  font-size: 13px;
+  color: var(--mlw-muted);
+  margin: 0 0 16px;
+}
+
+.mylikita-widget__field { margin-bottom: 12px; }
+.mylikita-widget__label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--mlw-text);
+  margin-bottom: 5px;
+}
+.mylikita-widget__label .req { color: var(--mlw-danger); }
+.mylikita-widget__input,
+.mylikita-widget__select,
+.mylikita-widget__textarea {
+  width: 100%;
+  font: inherit;
+  font-size: 14px;
+  color: var(--mlw-text);
+  background: var(--mlw-bg);
+  border: 1px solid var(--mlw-border);
+  border-radius: var(--mlw-radius);
+  padding: 9px 11px;
+  outline: none;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.mylikita-widget__input:focus,
+.mylikita-widget__select:focus,
+.mylikita-widget__textarea:focus {
+  border-color: var(--mlw-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--mlw-primary) 22%, transparent);
+}
+.mylikita-widget__row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 420px) { .mylikita-widget__row { grid-template-columns: 1fr; } }
+
+.mylikita-widget__error {
+  display: none;
+  font-size: 13px;
+  color: var(--mlw-danger);
+  background: color-mix(in srgb, var(--mlw-danger) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--mlw-danger) 35%, transparent);
+  border-radius: var(--mlw-radius);
+  padding: 9px 12px;
+  margin-bottom: 12px;
+}
+.mylikita-widget__error.visible { display: block; }
+
+.mylikita-widget__submit {
+  width: 100%;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--mlw-primary-text);
+  background: var(--mlw-primary);
+  border: none;
+  border-radius: var(--mlw-radius);
+  padding: 11px 16px;
+  cursor: pointer;
+  transition: background .15s ease, transform .05s ease;
+}
+.mylikita-widget__submit:hover { background: var(--mlw-primary-dark); }
+.mylikita-widget__submit:active { transform: translateY(1px); }
+.mylikita-widget__submit:disabled { opacity: .6; cursor: wait; }
+
+.mylikita-widget__hint { font-size: 12px; color: var(--mlw-muted); margin: 8px 0 0; }
+
+/* status view */
+.mylikita-widget__status { text-align: center; padding: 8px 4px; }
+.mylikita-widget__status-icon {
+  width: 46px; height: 46px;
+  border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 22px; margin-bottom: 10px;
+}
+.mylikita-widget__status-icon.info { background: color-mix(in srgb, var(--mlw-primary) 12%, transparent); }
+.mylikita-widget__status-icon.success { background: color-mix(in srgb, var(--mlw-success) 14%, transparent); }
+.mylikita-widget__status-icon.danger { background: color-mix(in srgb, var(--mlw-danger) 12%, transparent); }
+.mylikita-widget__status-title { font-size: 16px; font-weight: 700; margin: 0 0 4px; }
+.mylikita-widget__status-message { font-size: 13px; color: var(--mlw-muted); margin: 0 0 14px; }
+.mylikita-widget__status-ref { font-size: 12px; color: var(--mlw-muted); margin: 0 0 14px; }
+
+.mylikita-widget__spinner {
+  width: 18px; height: 18px;
+  display: inline-block;
+  border: 2px solid color-mix(in srgb, var(--mlw-primary-text) 40%, transparent);
+  border-top-color: var(--mlw-primary-text);
+  border-radius: 50%;
+  animation: mylikita-widget-spin .7s linear infinite;
+  vertical-align: -3px;
+  margin-right: 7px;
+}
+@keyframes mylikita-widget-spin { to { transform: rotate(360deg); } }
+
+.mylikita-widget__link-btn {
+  background: none;
+  border: 1px solid var(--mlw-border);
+  border-radius: var(--mlw-radius);
+  color: var(--mlw-text);
+  font: inherit;
+  font-size: 13px;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+.mylikita-widget__link-btn:hover { border-color: var(--mlw-primary); color: var(--mlw-primary); }
+`;var ye={title:"Book an appointment",subtitle:"Request a slot and we will confirm shortly.",name:"Full name",phone:"Phone number",email:"Email address",provider:"Preferred doctor (optional)",noPreference:"No preference",service:"Service (optional)",datetime:"Preferred date & time",visitType:"Appointment type",visitPhysical:"In person",visitTelemedicine:"Video call",visitHome:"Home visit",notes:"Notes (optional)",submit:"Request appointment",submitting:"Submitting\u2026",bookAnother:"Book another appointment",requiredPhoneOrEmail:"Please provide a phone number or an email address.",requiredName:"Please enter your name.",requiredDatetime:"Please choose a date and time.",networkError:"Could not reach the booking service. Please try again.",rateLimited:"Too many requests \u2014 please wait a moment and try again."},ie="mylikita-widget-styles";function ae(i,e={}){if(!i)throw new Error("createBookingWidget: a container element is required");let t={relayUrl:e.relayUrl,websiteKey:e.websiteKey,facilityId:e.facilityId,providers:e.providers||[],services:e.services||[],pollIntervalMs:e.pollIntervalMs??5e3,maxTries:e.maxTries??12,text:{...ye,...e.text||{}},theme:e.theme||{},onStatus:typeof e.onStatus=="function"?e.onStatus:null,onError:typeof e.onError=="function"?e.onError:null,onBooking:typeof e.onBooking=="function"?e.onBooking:null,externalRef:typeof e.externalRef=="function"?e.externalRef:T};if(!t.relayUrl||!t.websiteKey||!t.facilityId)throw new Error("createBookingWidget: relayUrl, websiteKey and facilityId are required");xe();let r=t.text,a=i;a.classList.add("mylikita-widget"),ve(a,t.theme);let o=!0,l=!1,c=null,p=Math.random().toString(36).slice(2,8),$=`mylikita_ref_${t.facilityId}_${p}`,g=s("form",{className:"mylikita-widget__form"}),A=s("h3",{className:"mylikita-widget__title",text:r.title}),P=s("p",{className:"mylikita-widget__subtitle",text:r.subtitle}),B=s("div",{className:"mylikita-widget__error",attrs:{role:"alert"}}),q=w("name",r.name,{required:!0}),Y=s("div",{className:"mylikita-widget__row"}),L=w("phone",r.phone,{type:"tel",inputmode:"tel"}),U=w("email",r.email,{type:"email"});Y.append(L.wrap,U.wrap);let H=K("provider",r.provider,[{value:"",label:r.noPreference},...t.providers.map(n=>({value:n.external_id,label:n.label||n.external_id}))]),O=t.services.length?K("service",r.service,[{value:"",label:"\u2014"},...t.services.map(n=>({value:n,label:n}))]):w("service",r.service),_=w("datetime",r.datetime,{type:"datetime-local",required:!0});_.input.min=re(new Date);let W=K("visitType",r.visitType,[{value:"physical",label:r.visitPhysical},{value:"telemedicine",label:r.visitTelemedicine},{value:"home_visit",label:r.visitHome}]),j=w("notes",r.notes,{type:"textarea",maxlength:500}),f=s("button",{className:"mylikita-widget__submit",type:"submit",text:r.submit}),F=s("div");F.append(f);let R=s("p",{className:"mylikita-widget__hint"});g.append(B,q.wrap,Y,H.wrap,O.wrap,_.wrap,W.wrap,j.wrap,F,R);let y=s("div",{className:"mylikita-widget__status",attrs:{"aria-live":"polite"},hidden:!0});g.addEventListener("submit",n=>{n.preventDefault(),!l&&ne()});async function ne(){l=!0,z(null),f.disabled=!0,f.textContent=r.submitting;let n={facility_id:t.facilityId,patient_name:q.input.value.trim(),patient_phone:L.input.value.trim(),patient_email:U.input.value.trim(),provider_external_id:H.input.value||void 0,service_name:O.input.value.trim()||void 0,appt_datetime:_.input.value,visit_type:W.input.value||"physical",duration_mins:t.durationMins||void 0,notes:j.input.value.trim()||void 0};if(!n.patient_name)return x(r.requiredName);if(!n.patient_phone&&!n.patient_email)return x(r.requiredPhoneOrEmail);if(!n.appt_datetime||Number.isNaN(Date.parse(n.appt_datetime)))return x(r.requiredDatetime);let d=be($);if(!d){d=t.externalRef();try{sessionStorage.setItem($,d)}catch{}}n.external_ref=d,c=new AbortController;let u=null;try{let m=await k({relayUrl:t.relayUrl,websiteKey:t.websiteKey,payload:n,signal:c.signal});u=m.booking_ref,m.duplicate?(R.textContent="",V("pending_confirmation",u,"We found an existing booking request for this slot \u2014 checking it\u2026")):(t.onBooking&&I(t.onBooking,m,n),V("pending_confirmation",u,null)),oe(u)}catch(m){if(!o||m?.name==="AbortError")return;let v=m.status===429?r.rateLimited:m.message||r.networkError;t.onError&&I(t.onError,m),x(v)}}async function oe(n){let d;try{d=await S(()=>h({relayUrl:t.relayUrl,websiteKey:t.websiteKey,bookingRef:n,signal:c.signal}),{intervalMs:t.pollIntervalMs,maxTries:t.maxTries,signal:c.signal})}catch(u){if(!o||u?.name==="AbortError")return;t.onError&&I(t.onError,u),b("poll_error",n,u.message||r.networkError),l=!1;return}if(!(!o||d.status==="aborted")){if(t.onStatus&&d.data&&I(t.onStatus,d.data),d.resolved){try{sessionStorage.removeItem($)}catch{}b(d.status,n)}else b("pending_confirmation",n);l=!1}}function V(n,d,u){g.hidden=!0,A.hidden=!0,P.hidden=!0,y.hidden=!1,b(n,d,u)}function b(n,d,u){let m=N(n),v=s("div",{className:`mylikita-widget__status-icon ${m.kind}`});v.textContent=_e(m.kind);let se=s("p",{className:"mylikita-widget__status-title",text:m.title}),le=s("p",{className:"mylikita-widget__status-message",text:u||m.message}),de=s("p",{className:"mylikita-widget__status-ref",text:d?`Booking ref: ${d}`:""}),G=s("button",{className:"mylikita-widget__link-btn",type:"button",text:r.bookAnother});G.addEventListener("click",()=>J()),y.replaceChildren(v,se,le,de,G)}function x(n){l=!1,f.disabled=!1,f.textContent=r.submit,z(n)}function z(n){B.textContent=n||"",B.classList.toggle("visible",!!n)}function J(){try{sessionStorage.removeItem(`mylikita_ref_${t.facilityId}`)}catch{}g.reset(),z(null),y.replaceChildren(),y.hidden=!0,g.hidden=!1,A.hidden=!1,P.hidden=!1,R.textContent="",l=!1,f.disabled=!1,f.textContent=r.submit,_.input.min=re(new Date)}return a.replaceChildren(A,P,g,y),{destroy(){o=!1,c&&c.abort(),a.replaceChildren(),a.classList.remove("mylikita-widget")},reset:J,getForm(){return{name:q.input.value,phone:L.input.value,email:U.input.value}}}}function w(i,e,{type:t="text",required:r=!1,maxlength:a,inputmode:o}={}){let l=s("div",{className:"mylikita-widget__field"}),c=s("label",{className:"mylikita-widget__label",attrs:{for:`mlw-${i}`}});c.append(document.createTextNode(e)),r&&c.append(s("span",{className:"req",text:" *"}));let p;return t==="textarea"?p=s("textarea",{className:"mylikita-widget__textarea",attrs:{id:`mlw-${i}`,rows:3,maxlength:a||""}}):p=s("input",{className:"mylikita-widget__input",attrs:{id:`mlw-${i}`,type:t,inputmode:o||""}}),r&&p.setAttribute("required",""),l.append(c,p),{wrap:l,input:p}}function K(i,e,t){let r=s("div",{className:"mylikita-widget__field"}),a=s("label",{className:"mylikita-widget__label",attrs:{for:`mlw-${i}`}});a.textContent=e;let o=s("select",{className:"mylikita-widget__select",attrs:{id:`mlw-${i}`}});for(let l of t){let c=s("option",{text:l.label});c.value=l.value,o.append(c)}return r.append(a,o),{wrap:r,input:o}}function s(i,{className:e,text:t,attrs:r={}}={}){let a=document.createElement(i);e&&(a.className=e),t!==void 0&&(a.textContent=t);for(let[o,l]of Object.entries(r))l===void 0||l===""||a.setAttribute(o,l);return a}function _e(i){return i==="success"?"\u2713":i==="danger"?"!":"\u2026"}function be(i){try{return sessionStorage.getItem(i)||null}catch{return null}}function I(i,...e){try{i(...e)}catch{}}function re(i){let e=t=>String(t).padStart(2,"0");return`${i.getFullYear()}-${e(i.getMonth()+1)}-${e(i.getDate())}T${e(i.getHours())}:${e(i.getMinutes())}`}function xe(){if(document.getElementById(ie))return;let i=document.createElement("style");i.id=ie,i.textContent=te,document.head.appendChild(i)}function ve(i,e){for(let[t,r]of Object.entries(C(e)))i.style.setProperty(t,r)}return ge(ke);})();
+
+</script>
+  <script>
+    // ── in-page mock relay (implements the v1 contract: POST /v1/bookings,
+    //    GET /v1/bookings/:ref). Swapped in by overriding global fetch ─────
+    // NOTE: demo-only. A production page must NOT override fetch — point the
+    // widget at the real relay URL instead.
+    const bookings = new Map(); // booking_ref -> { payload, polls }
+    const log = (line) => {
+      const el = document.getElementById('log');
+      el.innerHTML = line + '\n' + el.innerHTML;
+    };
+
+    const mockRelay = async (url, init) => {
+      const method = (init && init.method) || 'GET';
+      const u = new URL(url, location.href);
+
+      if (method === 'POST' && u.pathname === '/v1/bookings') {
+        const body = JSON.parse(init.body);
+        const existing = [...bookings.values()].find((b) => b.external_ref === body.external_ref);
+        if (existing) {
+          log('<b>[mock relay]</b> idempotent replay — same external_ref, returning existing booking');
+          return json(201, { booking_ref: existing.booking_ref, status: 'pending_confirmation' });
+        }
+        const dup = [...bookings.values()].find(
+          (b) => b.phone === body.patient_phone && b.datetime === body.appt_datetime
+        );
+        if (dup) {
+          log('<b>[mock relay]</b> duplicate slot → 409 duplicate_booking');
+          return json(409, { error: 'duplicate_booking', message: 'This patient already has this appointment slot booked', booking_ref: dup.booking_ref });
+        }
+        const booking_ref = 'MLB-' + Date.now().toString(36).toUpperCase();
+        bookings.set(booking_ref, { ...body, booking_ref, external_ref: body.external_ref, phone: body.patient_phone, datetime: body.appt_datetime, polls: 0 });
+        log('<b>[mock relay]</b> booking ' + booking_ref + ' stored (pending_confirmation)');
+        return json(201, { booking_ref, status: 'pending_confirmation' });
+      }
+
+      if (method === 'GET' && u.pathname.startsWith('/v1/bookings/')) {
+        const ref = decodeURIComponent(u.pathname.split('/').pop());
+        const b = bookings.get(ref);
+        if (!b) return json(404, { error: 'not_found', message: 'Unknown booking_ref' });
+        b.polls += 1;
+        // Transition to confirmed on the second poll so the demo shows the poll loop.
+        const status = b.polls >= 2 ? 'confirmed' : 'pending_confirmation';
+        log('<b>[mock relay]</b> poll ' + ref + ' → ' + status);
+        return json(200, { booking_ref: ref, status, appt_ref: status === 'confirmed' ? 'APT-DEMO123' : undefined });
+      }
+
+      return json(500, { error: 'server_error', message: 'mock relay: unhandled ' + method + ' ' + url });
+    };
+
+    const realFetch = window.fetch.bind(window);
+    window.fetch = (url, init) => mockRelay(url, init);
+
+    function json(status, body) {
+      return Promise.resolve(new Response(JSON.stringify(body), {
+        status,
+        headers: { 'Content-Type': 'application/json' },
+      }));
+    }
+
+    // ── mount two widgets ──────────────────────────────────────────────────
+    const KEY = 'wk_demo_public_key';
+    const FACILITY = 'F1';
+
+    MyLikitaBookingWidget.createBookingWidget(document.getElementById('booking'), {
+      // The in-page mock relay overrides fetch, so this URL is never actually
+      // contacted — the widget still requires a non-empty relay URL.
+      relayUrl: 'https://api.mylikita.clinic',
+      websiteKey: KEY,
+      facilityId: FACILITY,
+      providers: [{ external_id: 'dr-khalil', label: 'Dr. Khalil' }, { external_id: 'dr-amina', label: 'Dr. Amina' }],
+      services: ['General consultation', 'Dental check-up', 'X-ray'],
+      pollIntervalMs: 800,
+      maxTries: 20,
+      onStatus: (s) => log('<b>[widget 1]</b> status → ' + s.status + (s.appt_ref ? ' (' + s.appt_ref + ')' : '')),
+      onBooking: (b) => log('<b>[widget 1]</b> booked → ' + b.booking_ref),
+    });
+
+    const w2 = MyLikitaBookingWidget.createBookingWidget(document.getElementById('booking2'), {
+      relayUrl: 'https://api.mylikita.clinic',
+      websiteKey: KEY,
+      facilityId: FACILITY,
+      providers: [{ external_id: 'dr-khalil', label: 'Dr. Khalil' }],
+      pollIntervalMs: 800,
+      maxTries: 20,
+      theme: { primary: '#0d9488', primaryDark: '#0f766e' },
+      onStatus: (s) => log('<b>[widget 2]</b> status → ' + s.status),
+    });
+
+    document.querySelectorAll('[data-theme]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const preset = btn.dataset.theme;
+        const vars = {
+          teal: { '--mlw-primary': '#0d9488', '--mlw-primary-dark': '#0f766e' },
+          sunset: { '--mlw-primary': '#ea580c', '--mlw-primary-dark': '#c2410c', '--mlw-bg': '#fff7ed' },
+        }[preset] || {};
+        const node = document.getElementById('booking2');
+        for (const k of ['--mlw-primary', '--mlw-primary-dark', '--mlw-bg']) node.style.removeProperty(k);
+        Object.entries(vars).forEach(([k, v]) => node.style.setProperty(k, v));
+        log('<b>[demo]</b> theme applied via CSS variables on .mylikita-widget');
+      });
+    });
+
+    log('<b>[demo]</b> ready — submit a booking; it flips to confirmed after two polls.');
+  </script>
+</body>
+</html>

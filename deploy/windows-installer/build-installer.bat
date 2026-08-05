@@ -1,0 +1,230 @@
+@echo off
+setlocal EnableExtensions EnableDelayedExpansion
+title MyLikita - Build Installer
+color 0A
+
+:: ============================================================================
+::  Builds the self-contained MyLikita Windows installer.
+::  MUST run on a 64-bit WINDOWS machine with Inno Setup 6 installed.
+::  Produces: deploy\windows-installer\dist\output\MyLikita-Setup-<ver>.exe
+;;
+;;  What it does:
+;;   1. Downloads Node.js, MySQL (ZIP build) and NSSM into dist\cache
+;;   2. Builds the React frontend (with a server-IP placeholder)
+;;   3. Copies the backend and installs its dependencies (prebuilt node_modules)
+;;   4. Copies the Inno Setup script + helper scripts + prime-db.sql
+;;   5. Compiles the single-file installer with ISCC.exe
+;; ============================================================================
+
+set "HERE=%~dp0"
+set "ROOT=%HERE%..\.."
+set "DIST=%HERE%dist"
+set "CACHE=%DIST%\cache"
+set "RUNTIME=%DIST%\runtime"
+
+:: ---------------------------------------------------------- configuration --
+set "VERSION=1.0.0"
+if defined MYLIKITA_VERSION set "VERSION=%MYLIKITA_VERSION%"
+:: Node 20.19+ is required by the frontend's Vite 7 build (engines: ^20.19.0 || >=22.12.0)
+set "NODE_VERSION=v20.19.0"
+set "MYSQL_VERSION=8.0.42"
+set "NSSM_VERSION=2.24"
+
+:: Download-only mode (used by the nightly CI cache pre-warm workflow): fetch
+:: the runtimes into %CACHE% and exit. No Inno Setup, frontend build, or
+:: bundle is needed - the download cache is shared with the release build via
+:: an identical GitHub Actions cache key.
+set "DOWNLOAD_ONLY=0"
+if /i "%MYLIKITA_DOWNLOAD_ONLY%"=="1" set "DOWNLOAD_ONLY=1"
+
+set "NODE_URL=https://nodejs.org/dist/%NODE_VERSION%/node-%NODE_VERSION%-win-x64.zip"
+set "MYSQL_URL=https://dev.mysql.com/get/Downloads/MySQL-8.0/mysql-%MYSQL_VERSION%-winx64.zip"
+set "NSSM_URL=https://nssm.cc/release/nssm-%NSSM_VERSION%.zip"
+
+echo ============================================================
+echo  MyLikita Installer Build  v%VERSION%
+echo ============================================================
+echo  Project root : %ROOT%
+echo  Build dir    : %DIST%
+echo  Node         : %NODE_VERSION%
+echo  MySQL        : %MYSQL_VERSION%
+echo  NSSM         : %NSSM_VERSION%
+echo.
+
+if not exist "%DIST%" mkdir "%DIST%"
+if not exist "%CACHE%" mkdir "%CACHE%"
+if not exist "%RUNTIME%" mkdir "%RUNTIME%"
+
+:: ----------------------------------------------------- locate Inno Setup ---
+set "ISCC="
+if not "%DOWNLOAD_ONLY%"=="1" (
+    where ISCC >nul 2>&1 && set "ISCC=ISCC"
+    if not defined ISCC (
+        for %%p in ("%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe" "%ProgramFiles%\Inno Setup 6\ISCC.exe") do (
+            if exist "%%~p" set "ISCC=%%~p"
+        )
+    )
+    if not defined ISCC (
+        echo [ERROR] Inno Setup 6 (ISCC.exe) not found.
+        echo         Install it from https://jrsoftware.org/isinfo.php and re-run.
+        exit /b 1
+    )
+    rem %ISCC% would expand at block-parse time (before where/for set it) -
+    rem use !ISCC! so the echoed value is the one actually found.
+    echo  [OK] Inno Setup compiler: !ISCC!
+)
+echo.
+
+:: ------------------------------------------------------------- downloader --
+set "DL=0"
+if not exist "%CACHE%\node-%NODE_VERSION%-win-x64.zip" set "DL=1"
+if not exist "%CACHE%\mysql-%MYSQL_VERSION%-winx64.zip" set "DL=1"
+if not exist "%CACHE%\nssm-%NSSM_VERSION%.zip" set "DL=1"
+
+if "%DL%"=="1" (
+    echo  Downloading runtimes into %CACHE%  (one-time; ~350 MB total)...
+    powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+      "$ProgressPreference='SilentlyContinue';" ^
+      "if (!(Test-Path '%CACHE%\node-%NODE_VERSION%-win-x64.zip')) { Invoke-WebRequest -Uri '%NODE_URL%' -OutFile '%CACHE%\node-%NODE_VERSION%-win-x64.zip' -UseBasicParsing };" ^
+      "if (!(Test-Path '%CACHE%\mysql-%MYSQL_VERSION%-winx64.zip')) { Invoke-WebRequest -Uri '%MYSQL_URL%' -OutFile '%CACHE%\mysql-%MYSQL_VERSION%-winx64.zip' -UseBasicParsing };" ^
+      "if (!(Test-Path '%CACHE%\nssm-%NSSM_VERSION%.zip')) { Invoke-WebRequest -Uri '%NSSM_URL%' -OutFile '%CACHE%\nssm-%NSSM_VERSION%.zip' -UseBasicParsing }"
+    if errorlevel 1 (
+        echo  [ERROR] Download failed. Check internet access / URLs above.
+        exit /b 1
+    )
+)
+
+:: ------------------------------------------------------ download-only mode --
+:: Cache pre-warm (CI) stops here - the runtimes are in %CACHE% and the cache
+:: save happens automatically at the end of the actions/cache job.
+if "%DOWNLOAD_ONLY%"=="1" (
+    echo.
+    echo  [OK] Download-only mode: runtimes cached in %CACHE%
+    echo       (node, mysql, nssm). Exiting before extract/build.
+    exit /b 0
+)
+
+:: ------------------------------------------------------ extract runtimes ----
+echo  Extracting runtimes...
+if not exist "%RUNTIME%\node\node.exe" (
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive -Path '%CACHE%\node-%NODE_VERSION%-win-x64.zip' -DestinationPath '%RUNTIME%\tmp-node' -Force; Move-Item '%RUNTIME%\tmp-node\node-%NODE_VERSION%-win-x64' '%RUNTIME%\node'"
+    if errorlevel 1 (
+        echo  [ERROR] Could not extract Node.js.
+        exit /b 1
+    )
+)
+if not exist "%RUNTIME%\mysql\bin\mysqld.exe" (
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive -Path '%CACHE%\mysql-%MYSQL_VERSION%-winx64.zip' -DestinationPath '%RUNTIME%\tmp-mysql' -Force; Move-Item '%RUNTIME%\tmp-mysql\mysql-%MYSQL_VERSION%-winx64' '%RUNTIME%\mysql'"
+    if errorlevel 1 (
+        echo  [ERROR] Could not extract MySQL.
+        exit /b 1
+    )
+)
+if not exist "%RUNTIME%\nssm\nssm.exe" (
+    if not exist "%RUNTIME%\nssm" mkdir "%RUNTIME%\nssm"
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive -Path '%CACHE%\nssm-%NSSM_VERSION%.zip' -DestinationPath '%RUNTIME%\tmp-nssm' -Force; Copy-Item '%RUNTIME%\tmp-nssm\nssm-%NSSM_VERSION%\win64\nssm.exe' -Destination '%RUNTIME%\nssm\nssm.exe'"
+    if errorlevel 1 (
+        echo  [ERROR] Could not extract NSSM.
+        exit /b 1
+    )
+)
+echo  [OK] Runtimes ready.
+
+:: use the embedded Node for all npm operations so native modules match the
+:: Node version that ships in the installer
+set "PATH=%RUNTIME%\node;%PATH%"
+
+:: --------------------------------------------------- build the frontend ----
+echo.
+echo  Building the React frontend (with server-IP placeholder)...
+pushd "%ROOT%\frontend"
+set "SAVED_ENV_PROD="
+if exist ".env.production" (
+    set "SAVED_ENV_PROD=1"
+    copy /y ".env.production" "%CACHE%\env.production.saved" >nul
+)
+(
+    echo VITE_API_URL=http://__MYLIKITA_SERVER_IP__:46990
+) > ".env.production"
+
+call npm install --no-audit --no-fund
+if errorlevel 1 (
+    echo  [ERROR] Frontend npm install failed.
+    if defined SAVED_ENV_PROD copy /y "%CACHE%\env.production.saved" ".env.production" >nul
+    popd
+    exit /b 1
+)
+call npm run build
+if errorlevel 1 (
+    echo  [ERROR] Frontend build failed.
+    if defined SAVED_ENV_PROD copy /y "%CACHE%\env.production.saved" ".env.production" >nul
+    popd
+    exit /b 1
+)
+if defined SAVED_ENV_PROD copy /y "%CACHE%\env.production.saved" ".env.production" >nul
+popd
+
+if not exist "%DIST%\frontend\dist" mkdir "%DIST%\frontend\dist"
+xcopy /e /i /y /q "%ROOT%\frontend\dist\*" "%DIST%\frontend\dist\" >nul
+echo  [OK] Frontend build copied.
+
+:: ----------------------------------------------- bundle the backend --------
+echo.
+echo  Bundling backend code...
+if not exist "%DIST%\backend" mkdir "%DIST%\backend"
+robocopy "%ROOT%\backend" "%DIST%\backend" /E /XD node_modules uploads log .git /XF *.log .env .env.* /NFL /NDL /NJH /NJS /NP
+if %errorlevel% geq 8 (
+    echo  [ERROR] robocopy failed to copy the backend.
+    exit /b 1
+)
+
+:: prebuilt node_modules - install with the SAME embedded Node version so the
+:: native binaries (bcrypt etc.) match what ships in the installer.
+echo.
+echo  Installing backend dependencies (prebuilt node_modules) with embedded Node %NODE_VERSION%...
+set "PUPPETEER_SKIP_DOWNLOAD=1"
+pushd "%DIST%\backend"
+call "%RUNTIME%\node\npm.cmd" install --omit=dev --no-audit --no-fund
+if errorlevel 1 (
+    echo  [ERROR] Backend npm install failed.
+    popd
+    exit /b 1
+)
+popd
+echo  [OK] Backend + node_modules bundled.
+
+:: ----------------------------------------------------- database + scripts ---
+if not exist "%DIST%\database" mkdir "%DIST%\database"
+copy /y "%ROOT%\backend\prime-db.sql" "%DIST%\database\prime-db.sql" >nul
+
+if not exist "%DIST%\scripts" mkdir "%DIST%\scripts"
+copy /y "%HERE%scripts\*.cmd" "%DIST%\scripts\" >nul
+
+copy /y "%HERE%MyLikita-Setup.iss" "%DIST%\MyLikita-Setup.iss" >nul
+
+:: ------------------------------------------------------------ compile -------
+echo.
+echo  Compiling installer (this takes a few minutes)...
+pushd "%DIST%"
+"%ISCC%" "/dMyAppVersion=%VERSION%" "MyLikita-Setup.iss"
+if errorlevel 1 (
+    popd
+    echo  [ERROR] Inno Setup compilation failed.
+    exit /b 1
+)
+popd
+
+echo.
+echo  ============================================================
+echo   BUILD COMPLETE
+echo   Installer : %DIST%\output\MyLikita-Setup-%VERSION%.exe
+echo   Bundle    : %DIST%\  (backend, frontend, runtimes, scripts)
+echo  ============================================================
+echo.
+echo   Next steps:
+echo   1. Test on a CLEAN Windows VM: copy the .exe, double-click, run.
+echo   2. Verify http://localhost:46990/ opens the login page.
+echo   3. Ship ONLY the .exe to the client - it is fully self-contained.
+echo.
+if not defined CI pause
+endlocal

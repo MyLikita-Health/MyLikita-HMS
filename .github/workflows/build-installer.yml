@@ -5,6 +5,12 @@ name: Build Windows Installer
 # verified (smoke test), then it is run headlessly on a Windows Server VM
 # (install test) before it is attached to the GitHub Release for the tag.
 # Can also be triggered manually from the Actions tab.
+#
+# The install test ends with the Phase B4 relay integration test: it boots
+# the real cloud relay (backend/relay) against the installed MySQL, points
+# the installed server at it, books through the website key, and asserts the
+# full website-booking loop (relay_in_master -> appt_master source='website'
+# -> status change -> appt_sync_outbox -> relay_out_master -> website poll).
 
 on:
   push:
@@ -25,6 +31,11 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          # The installer bundles frontend/ (Vite build) and backend/ from the
+          # checkout, so both submodules must be materialised. GITHUB_TOKEN
+          # clones same-org private submodules; if that ever 403s, set an org
+          # PAT secret and point token: ${{ secrets.MYLIKITA_PAT }} here.
+          submodules: recursive
 
       # Derive the app version from the tag: v1.2.3 -> 1.2.3
       - name: Resolve version from tag
@@ -204,6 +215,14 @@ jobs:
     needs: [build, smoke-test]   # strictly last: after the bundle is verified
 
     steps:
+      # The Phase B4 relay test boots backend/relay from the repo, so the
+      # source tree must be present on this runner (artifacts only carry the
+      # installer). Submodules are recursed so backend/relay actually exists.
+      - name: Checkout (for relay boot)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
       - name: Download installer artifact
         uses: actions/download-artifact@v4
         with:
@@ -351,6 +370,94 @@ jobs:
           $out = (& $node -e $verifyJs $token $secret | Out-String).Trim()
           if ($LASTEXITCODE -ne 0 -or $out -notmatch 'JWT_OK') { throw "JWT signature verification failed: $out" }
           Write-Output "[OK] JWT verified with JWT_SECRET from .env: $out"
+
+      # =========================================================================
+      # APPOINTMENT LIFECYCLE NOTIFICATIONS
+      # The installer must ship the lifecycle-notification-rule migration
+      # (20260804000008: seeds appointment_confirmed / cancelled / completed /
+      # rescheduled / no_show into __default__ and propagates to facilities) and
+      # the hub must fire notificationService.send on a status transition.
+      # Assert 1) all five lifecycle rules exist for __default__ with the right
+      # targets, and 2) confirming a real appointment through the API lands a
+      # sys_notifications row with at least one resolved recipient - proving the
+      # FIND_IN_SET permission matcher delivers, not just the rule seed.
+      # =========================================================================
+      - name: Verify lifecycle notification rules and confirm-notification delivery
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $facilityId = '1be0a9da-bff9-4ab6-a36c-edfd8ca88f1a'
+
+          function Read-Env($path) {
+            $h = @{}
+            Get-Content $path | ForEach-Object {
+              if ($_ -match '^\s*([A-Za-z0-9_]+)=(.*)$') { $h[$matches[1]] = $matches[2].Trim() }
+            }
+            return $h
+          }
+          $envMap = Read-Env 'C:\MyLikita\backend\.env'
+          $mysql = 'C:\MyLikita\runtime\mysql\bin\mysql.exe'
+          $db    = $envMap['DB_NAME']
+          $pw    = $envMap['DB_PASSWORD']
+          $port  = if ($envMap['DB_PORT']) { $envMap['DB_PORT'] } else { '3306' }
+
+          # ── 1) The migration ran during install: all 5 lifecycle rules exist
+          #    in the __default__ template with the right targets. Every mysql
+          #    call ends with $db as the final positional argument (the phase-2
+          #    marker step's convention) so the queries never depend on a
+          #    client-side default schema.
+          $found = @(& $mysql -u root "--password=$pw" "--port=$port" -N -s -e "SELECT event_type FROM sys_notification_rules WHERE facilityId='__default__'" $db)
+          $found = @($found | ForEach-Object { $_.Trim() })
+          $expected = @('appointment_confirmed','appointment_cancelled','appointment_completed','appointment_rescheduled','appointment_no_show')
+          foreach ($e in $expected) {
+            if ($found -notcontains $e) { throw "Missing __default__ notification rule for '$e' (found: $($found -join ', '))" }
+          }
+          Write-Output '[OK] All 5 lifecycle rules seeded in __default__.'
+
+          $confirmedTargets = (& $mysql -u root "--password=$pw" "--port=$port" -N -s -e "SELECT CONCAT(target_roles, ' | ', target_permissions) FROM sys_notification_rules WHERE facilityId='__default__' AND event_type='appointment_confirmed'" $db).Trim()
+          # target_roles / target_permissions are stored as JSON strings, so
+          # match the quoted tokens (like the role check) to avoid substring
+          # false-positives.
+          if ($confirmedTargets -notmatch '"Admin"' -or $confirmedTargets -notmatch '"Doctors"' -or $confirmedTargets -notmatch '"Records"') {
+            throw "appointment_confirmed rule targets are wrong: $confirmedTargets"
+          }
+          Write-Output "[OK] appointment_confirmed rule targets: $confirmedTargets"
+
+          # ── 2) Trigger a real confirm transition through the API and assert a
+          #    sys_notifications row lands (with a resolved recipient).
+          $loginBody = @{ username = 'admin'; password = '123456' } | ConvertTo-Json
+          $login = Invoke-RestMethod -Uri 'http://localhost:46990/auth/login' -Method Post -ContentType 'application/json' -Body $loginBody -TimeoutSec 30
+          if (-not $login.success) { throw 'Login failed before appointment confirm test.' }
+          $hdr = @{ Authorization = "Bearer $($login.token.Substring(7))" }
+
+          # Create a scheduled appointment in the seeded facility via the hub API.
+          $apptTime = (Get-Date).AddHours(1).ToString('yyyy-MM-dd HH:mm:ss')
+          $createBody = @{
+            facilityId    = $facilityId
+            patient_id    = "CI-PATIENT-$([guid]::NewGuid().ToString('N').Substring(0, 8))"
+            patient_name  = 'CI Test Patient'
+            service_name  = 'Consultation'
+            appt_datetime = $apptTime
+            status        = 'scheduled'
+          } | ConvertTo-Json -Depth 4
+          $created = Invoke-RestMethod -Uri 'http://localhost:46990/appointments' -Method Post -Headers $hdr -ContentType 'application/json' -Body $createBody -TimeoutSec 30
+          if (-not $created.success -or -not $created.data.id) { throw "Appointment create failed: $($created | ConvertTo-Json -Depth 4)" }
+          $apptId = $created.data.id
+          Write-Output "[OK] Created hub appointment id=$apptId ($($created.data.appt_ref))."
+
+          $statusBody = @{ status = 'confirmed' } | ConvertTo-Json
+          $conf = Invoke-RestMethod -Uri "http://localhost:46990/appointments/$apptId/status" -Method Put -Headers $hdr -ContentType 'application/json' -Body $statusBody -TimeoutSec 30
+          if (-not $conf.success -or $conf.data.status -ne 'confirmed') { throw "Confirm failed: $($conf | ConvertTo-Json -Depth 4)" }
+          Write-Output '[OK] Appointment confirmed via PUT /appointments/:id/status.'
+
+          $notifCount = (& $mysql -u root "--password=$pw" "--port=$port" -N -s -e "SELECT COUNT(*) FROM sys_notifications WHERE facilityId='$facilityId' AND event_type='appointment_confirmed' AND created_at >= NOW() - INTERVAL 10 MINUTE" $db).Trim()
+          if ([int]$notifCount -lt 1) { throw "No appointment_confirmed row landed in sys_notifications (count=$notifCount) - the lifecycle notification did not fire." }
+          $title = (& $mysql -u root "--password=$pw" "--port=$port" -N -s -e "SELECT title FROM sys_notifications WHERE facilityId='$facilityId' AND event_type='appointment_confirmed' ORDER BY id DESC LIMIT 1" $db).Trim()
+          Write-Output "[OK] appointment_confirmed notification landed in sys_notifications (count=$notifCount, title='$title')."
+
+          $recipCount = (& $mysql -u root "--password=$pw" "--port=$port" -N -s -e "SELECT COUNT(*) FROM sys_notification_recipients r JOIN sys_notifications n ON r.notification_id = n.id WHERE n.facilityId='$facilityId' AND n.event_type='appointment_confirmed' AND n.created_at >= NOW() - INTERVAL 10 MINUTE" $db).Trim()
+          if ([int]$recipCount -lt 1) { throw "No recipients resolved for appointment_confirmed (count=$recipCount) - the permission/role matcher delivered to nobody." }
+          Write-Output "[OK] appointment_confirmed delivered to $recipCount recipient(s)."
 
       # =========================================================================
       # ONBOARDING GATE - asserts the new behavior end to end: the claim wizard
@@ -700,6 +807,265 @@ jobs:
           }
           if (-not $loggedIn) { throw 'Login did not succeed within 3 minutes after reinstall.' }
 
+      # =========================================================================
+      # PHASE B4 - RELAY INTEGRATION TEST (website-booking sync)
+      # The FINAL piece of the appointment pipeline: boot the REAL cloud relay
+      # (backend/relay) against the installed embedded MySQL, point the installed
+      # server at it with a facility sync key, book through the website key, and
+      # assert the full loop:
+      #   relay_in_master (website books) -> relaySync pull -> appt_master
+      #   (source='website', external_ref) -> hub status change -> appt_sync_outbox
+      #   -> relay_out_master -> website poll sees 'confirmed'.
+      # The relay runs as a plain background node process (NOT a service) using
+      # the app's own bundled node_modules (NODE_PATH) - no npm install, no
+      # separate runner. Runs AFTER phase 2 so the .env edit + service restart
+      # here disturb nothing else.
+      # =========================================================================
+      - name: B4 - Boot the cloud relay against the installed MySQL
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          function Read-Env($path) {
+            $h = @{}
+            Get-Content $path | ForEach-Object {
+              if ($_ -match '^\s*([A-Za-z0-9_]+)=(.*)$') { $h[$matches[1]] = $matches[2].Trim() }
+            }
+            return $h
+          }
+          $envMap = Read-Env 'C:\MyLikita\backend\.env'
+          $dbPort = if ($envMap['DB_PORT']) { $envMap['DB_PORT'] } else { '3306' }
+          $dbHost = if ($envMap['DB_HOST']) { $envMap['DB_HOST'] } else { '127.0.0.1' }
+          $pw = $envMap['DB_PASSWORD']
+          if (-not $pw) { throw 'DB_PASSWORD missing from .env - cannot boot the relay against MySQL.' }
+
+          # Operator key for the relay's super-admin endpoints (register).
+          $opKey = "opkey_$([guid]::NewGuid().ToString('N'))"
+          Set-Content -Path (Join-Path $env:TEMP 'relay-opkey.txt') -Value $opKey
+
+          $env:RELAY_PORT = '46995'
+          # Same host the app itself uses (mirrors the app's connection so the
+          # relay lands on the exact same root@localhost account).
+          $env:RELAY_DB_HOST = $dbHost
+          $env:RELAY_DB_PORT = $dbPort
+          $env:RELAY_DB_USER = 'root'
+          $env:RELAY_DB_PASSWORD = $pw
+          $env:RELAY_DB_NAME = 'mylikita_relay'
+          $env:RELAY_SUPER_ADMIN_KEY = $opKey
+          $env:RELAY_WEBHOOK_TIMEOUT_MS = '3000'
+          $env:RELAY_TTL_HOURS = '72'
+          $env:RELAY_RETENTION_DAYS = '14'
+          # Resolve the relay's deps from the INSTALLED app bundle - every
+          # package the relay requires ships with the app (verified in the
+          # smoke test), so no npm ci on the runner. Minor version drift is
+          # deliberate and benign today (e.g. relay wants node-cron ^3, the
+          # app bundles ^4 - cron.schedule's API is unchanged): if a future
+          # bump breaks the relay, pin the app's version up instead.
+          $env:NODE_PATH = 'C:\MyLikita\backend\node_modules'
+
+          $relayDir = Join-Path $env:GITHUB_WORKSPACE 'backend\relay'
+          if (-not (Test-Path (Join-Path $relayDir 'app.js'))) { throw "Relay source not found at $relayDir - checkout missing?" }
+          $node = 'C:\MyLikita\runtime\node\node.exe'
+          $outLog = 'C:\MyLikita\logs\relay-out.log'
+          $errLog = 'C:\MyLikita\logs\relay-err.log'
+          $p = Start-Process -FilePath $node -ArgumentList 'app.js' -WorkingDirectory $relayDir `
+            -RedirectStandardOutput $outLog -RedirectStandardError $errLog -WindowStyle Hidden -PassThru
+          Write-Output "Relay started (PID $($p.Id)), waiting for /health..."
+
+          $deadline = (Get-Date).AddMinutes(2)
+          $ok = $false
+          while ((Get-Date) -lt $deadline) {
+            try {
+              $h = Invoke-RestMethod -Uri 'http://127.0.0.1:46995/health' -TimeoutSec 10
+              if ($h.ok) { $ok = $true; Write-Output '[OK] Relay /health answered on :46995.'; break }
+            } catch {
+              Write-Output "Relay not up yet: $($_.Exception.Message)"
+            }
+            Start-Sleep -Seconds 5
+          }
+          if (-not $ok) {
+            Write-Output '--- relay stderr ---'
+            if (Test-Path $errLog) { Get-Content $errLog -Tail 30 }
+            throw 'Relay did not become healthy on :46995.'
+          }
+
+      - name: B4 - Register facility keys and point the server at the relay
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $opKey = (Get-Content (Join-Path $env:TEMP 'relay-opkey.txt') -Raw).Trim()
+          $facilityId = '1be0a9da-bff9-4ab6-a36c-edfd8ca88f1a'
+
+          # Issue the facility's sync_key + website_key (plaintext shown once,
+          # like the super-admin console does through the operator proxy).
+          $body = @{ facility_id = $facilityId } | ConvertTo-Json
+          $hdr = @{ Authorization = "Bearer $opKey" }
+          $r = Invoke-RestMethod -Uri 'http://127.0.0.1:46995/v1/facilities/register' -Method Post -Headers $hdr -ContentType 'application/json' -Body $body -TimeoutSec 30
+          if (-not $r.sync_key -or -not $r.website_key) { throw "Register did not return keys: $($r | ConvertTo-Json -Depth 4)" }
+          $r | ConvertTo-Json | Set-Content -Path (Join-Path $env:TEMP 'relay-keys.json')
+          Write-Output "[OK] Facility keys issued: sync_key $($r.sync_key.Substring(0,8))..., website_key $($r.website_key.Substring(0,8))..."
+
+          # Point the installed server at the relay (this is exactly what the
+          # Settings page does, just persisted to .env for the boot-time cron).
+          $envFile = 'C:\MyLikita\backend\.env'
+          $lines = Get-Content $envFile | Where-Object { $_ -notmatch '^(RELAY_URL|FACILITY_SYNC_KEY|FACILITY_ID|RELAY_SYNC_CRON|RELAY_OPERATOR_KEY)=' }
+          $add = @(
+            'RELAY_URL=http://127.0.0.1:46995'
+            "FACILITY_SYNC_KEY=$($r.sync_key)"
+            "FACILITY_ID=$facilityId"
+            'RELAY_SYNC_CRON=*/2 * * * *'
+          )
+          Set-Content -Path $envFile -Value ($lines + $add)
+
+          # Restart the app so startRelaySync() boots with the relay config.
+          Restart-Service -Name 'MyLikita' -Force
+          $deadline = (Get-Date).AddMinutes(3)
+          $up = $false
+          while ((Get-Date) -lt $deadline) {
+            try {
+              $lb = @{ username = 'ciadmin'; password = 'Cipass!234' } | ConvertTo-Json
+              $lr = Invoke-RestMethod -Uri 'http://localhost:46990/auth/login' -Method Post -ContentType 'application/json' -Body $lb -TimeoutSec 15
+              if ($lr.success) { $up = $true; Write-Output '[OK] Server is back up with relay env.'; break }
+            } catch {
+              Write-Output "Server not up yet: $($_.Exception.Message)"
+            }
+            Start-Sleep -Seconds 10
+          }
+          if (-not $up) { throw 'Server did not come back up after the relay .env change.' }
+
+      - name: B4 - Book via website key and pull into appt_master
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $keys = Get-Content (Join-Path $env:TEMP 'relay-keys.json') -Raw | ConvertFrom-Json
+          $facilityId = '1be0a9da-bff9-4ab6-a36c-edfd8ca88f1a'
+          $externalRef = "CI-BK-$([guid]::NewGuid().ToString('N').Substring(0,12))"
+          Set-Content -Path (Join-Path $env:TEMP 'relay-extref.txt') -Value $externalRef
+
+          # A patient books on the website (website_key) -> relay_in_master.
+          $apptTime = (Get-Date).AddHours(2).ToUniversalTime().ToString('o')
+          $body = @{
+            facility_id   = $facilityId
+            external_ref  = $externalRef
+            patient_name  = 'CI Website Patient'
+            patient_phone = '08012345678'
+            patient_email = 'ci.website@mylikita.test'
+            service_name  = 'Consultation'
+            appt_datetime = $apptTime
+            duration_mins = 30
+            visit_type    = 'physical'
+          } | ConvertTo-Json -Depth 4
+          $book = Invoke-RestMethod -Uri 'http://127.0.0.1:46995/v1/bookings' -Method Post -Headers @{ Authorization = "Bearer $($keys.website_key)" } -ContentType 'application/json' -Body $body -TimeoutSec 30
+          if (-not $book.booking_ref) { throw "Booking failed: $($book | ConvertTo-Json -Depth 4)" }
+          $book.booking_ref | Set-Content -Path (Join-Path $env:TEMP 'relay-booking-ref.txt')
+          Write-Output "[OK] Website booking created: ref=$($book.booking_ref) external_ref=$externalRef"
+
+          # Trigger the hospital-side pull deterministically (the 2-min cron
+          # would do it too; sync-now makes the assertion fast and exact).
+          $loginBody = @{ username = 'ciadmin'; password = 'Cipass!234' } | ConvertTo-Json
+          $login = Invoke-RestMethod -Uri 'http://localhost:46990/auth/login' -Method Post -ContentType 'application/json' -Body $loginBody -TimeoutSec 30
+          if (-not $login.success) { throw 'Login failed before sync-now.' }
+          $hdr = @{ Authorization = "Bearer $($login.token.Substring(7))" }
+
+          $deadline = (Get-Date).AddMinutes(3)
+          $pulled = $false
+          $skipReason = $null
+          while ((Get-Date) -lt $deadline) {
+            try {
+              $sn = Invoke-RestMethod -Uri 'http://localhost:46990/settings/relay/sync-now' -Method Post -Headers $hdr -ContentType 'application/json' -Body '{}' -TimeoutSec 60
+              Write-Output "sync-now -> $($sn | ConvertTo-Json -Compress -Depth 4)"
+              # Fail fast ONLY on a config problem (not_configured). A 'busy'
+              # skip is the 2-min cron holding the single-flight lock - benign,
+              # just retry (the cron will pull the booking itself anyway).
+              if ($sn.success -and $sn.data.skipped -and $sn.data.reason -eq 'not_configured') { $skipReason = $sn.data.reason; break }
+              if ($sn.success -and $sn.data.pulled -ge 1) { $pulled = $true; break }
+            } catch {
+              Write-Output "sync-now attempt failed (retrying): $($_.Exception.Message)"
+            }
+            Start-Sleep -Seconds 10
+          }
+          if ($skipReason) { throw "sync-now skipped: $skipReason - relay not configured on the server." }
+          if (-not $pulled) { throw 'The relay pull did not import the website booking within 3 minutes.' }
+
+          # The booking must be in appt_master as a WEBSITE row.
+          function Read-Env($path) {
+            $h = @{}
+            Get-Content $path | ForEach-Object {
+              if ($_ -match '^\s*([A-Za-z0-9_]+)=(.*)$') { $h[$matches[1]] = $matches[2].Trim() }
+            }
+            return $h
+          }
+          $envMap = Read-Env 'C:\MyLikita\backend\.env'
+          $mysql = 'C:\MyLikita\runtime\mysql\bin\mysql.exe'
+          $db = $envMap['DB_NAME']; $pw = $envMap['DB_PASSWORD']
+          $port = if ($envMap['DB_PORT']) { $envMap['DB_PORT'] } else { '3306' }
+          $row = (& $mysql -u root "--password=$pw" "--port=$port" -N -s -e "SELECT id, source, status, module FROM appt_master WHERE external_ref='$externalRef' LIMIT 1" $db).Trim()
+          if ($LASTEXITCODE -ne 0) { throw "MySQL query failed while checking appt_master (exit $LASTEXITCODE)." }
+          if (-not $row) { throw "No appt_master row for external_ref=$externalRef - the pull did not import it." }
+          $parts = $row -split "`t"
+          if ($parts.Count -lt 4) { throw "Unexpected appt_master row: '$row'" }
+          $parts[0] | Set-Content -Path (Join-Path $env:TEMP 'relay-appt-id.txt')
+          if ($parts[1] -ne 'website') { throw "source is '$($parts[1])', expected 'website'." }
+          if ($parts[2] -ne 'pending_confirmation') { throw "status is '$($parts[2])', expected 'pending_confirmation'." }
+          Write-Output "[OK] appt_master id=$($parts[0]) source=$($parts[1]) status=$($parts[2]) module=$($parts[3])"
+
+      - name: B4 - Status change writes a relay-outbox row and reaches the relay
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $externalRef = (Get-Content (Join-Path $env:TEMP 'relay-extref.txt') -Raw).Trim()
+          $apptId = (Get-Content (Join-Path $env:TEMP 'relay-appt-id.txt') -Raw).Trim()
+          $bookingRef = (Get-Content (Join-Path $env:TEMP 'relay-booking-ref.txt') -Raw).Trim()
+          $keys = Get-Content (Join-Path $env:TEMP 'relay-keys.json') -Raw | ConvertFrom-Json
+
+          function Read-Env($path) {
+            $h = @{}
+            Get-Content $path | ForEach-Object {
+              if ($_ -match '^\s*([A-Za-z0-9_]+)=(.*)$') { $h[$matches[1]] = $matches[2].Trim() }
+            }
+            return $h
+          }
+          $envMap = Read-Env 'C:\MyLikita\backend\.env'
+          $mysql = 'C:\MyLikita\runtime\mysql\bin\mysql.exe'
+          $db = $envMap['DB_NAME']; $pw = $envMap['DB_PASSWORD']
+          $port = if ($envMap['DB_PORT']) { $envMap['DB_PORT'] } else { '3306' }
+
+          # Staff confirm the website booking through the hub API.
+          $loginBody = @{ username = 'ciadmin'; password = 'Cipass!234' } | ConvertTo-Json
+          $login = Invoke-RestMethod -Uri 'http://localhost:46990/auth/login' -Method Post -ContentType 'application/json' -Body $loginBody -TimeoutSec 30
+          if (-not $login.success) { throw 'Login failed before status change.' }
+          $hdr = @{ Authorization = "Bearer $($login.token.Substring(7))" }
+          $conf = Invoke-RestMethod -Uri "http://localhost:46990/appointments/$apptId/status" -Method Put -Headers $hdr -ContentType 'application/json' -Body (@{ status = 'confirmed' } | ConvertTo-Json) -TimeoutSec 30
+          if (-not $conf.success -or $conf.data.status -ne 'confirmed') { throw "Confirm failed: $($conf | ConvertTo-Json -Depth 4)" }
+          Write-Output '[OK] Appointment confirmed via PUT /appointments/:id/status.'
+
+          # The status writer must have enqueued a relay-outbox row (the row
+          # is website-originated: external_ref set + relay configured).
+          $outboxCount = (& $mysql -u root "--password=$pw" "--port=$port" -N -s -e "SELECT COUNT(*) FROM appt_sync_outbox WHERE external_ref='$externalRef'").Trim()
+          if ($LASTEXITCODE -ne 0) { throw "MySQL query failed while checking appt_sync_outbox (exit $LASTEXITCODE)." }
+          if ([int]$outboxCount -lt 1) { throw "No appt_sync_outbox row for external_ref=$externalRef (count=$outboxCount)." }
+          Write-Output "[OK] appt_sync_outbox row written (count=$outboxCount)."
+
+          # Push it to the relay and assert relay_out_master + the website poll.
+          $sn = Invoke-RestMethod -Uri 'http://localhost:46990/settings/relay/sync-now' -Method Post -Headers $hdr -ContentType 'application/json' -Body '{}' -TimeoutSec 60
+          Write-Output "sync-now -> $($sn | ConvertTo-Json -Compress -Depth 4)"
+          if (-not $sn.success) { throw "sync-now failed while pushing the status: $($sn.error)" }
+
+          $deadline = (Get-Date).AddMinutes(2)
+          $pushed = $false
+          while ((Get-Date) -lt $deadline) {
+            $st = (& $mysql -u root "--password=$pw" "--port=$port" -N -s -e "SELECT status FROM mylikita_relay.relay_out_master WHERE external_ref='$externalRef' ORDER BY id DESC LIMIT 1").Trim()
+            if ($st -eq 'confirmed') { $pushed = $true; break }
+            Start-Sleep -Seconds 10
+          }
+          if (-not $pushed) { throw "relay_out_master did not receive 'confirmed' for $externalRef (got '$st')." }
+          Write-Output "[OK] Relay received the status change (relay_out_master status='confirmed')."
+
+          # Website-facing proof: the website poll now reflects the confirmed
+          # status (the exact flow the booking widget uses).
+          $poll = Invoke-RestMethod -Uri "http://127.0.0.1:46995/v1/bookings/$bookingRef" -Headers @{ Authorization = "Bearer $($keys.website_key)" } -TimeoutSec 20
+          if ($poll.status -ne 'confirmed') { throw "Website poll shows '$($poll.status)', expected 'confirmed'." }
+          Write-Output "[OK] Website poll sees status='confirmed' (appt_ref=$($poll.appt_ref)) - full relay loop verified."
+
       # Always upload the install + backend logs so a failing install can be
       # debugged without re-running the whole job.
       - name: Upload install diagnostics
@@ -711,6 +1077,8 @@ jobs:
             C:\MyLikita\logs\install.log
             C:\MyLikita\logs\out.log
             C:\MyLikita\logs\err.log
+            C:\MyLikita\logs\relay-out.log
+            C:\MyLikita\logs\relay-err.log
             ${{ runner.temp }}\mylikita-setup*.log
           if-no-files-found: warn
           retention-days: 14
