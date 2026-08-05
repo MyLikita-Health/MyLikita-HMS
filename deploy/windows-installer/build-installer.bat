@@ -56,27 +56,24 @@ if not exist "%CACHE%" mkdir "%CACHE%"
 if not exist "%RUNTIME%" mkdir "%RUNTIME%"
 
 :: ----------------------------------------------------- locate Inno Setup ---
-:: Use DELAYED expansion (!PF86!) for the Inno Setup paths INSIDE the block:
-:: cmd expands %%VAR%% at parse time, so %%PF86%% would inject "Program
-:: Files (x86)" - parens in the VALUE that break the block scanner even
-:: inside quotes ('not was unexpected at this time.'). !PF86! expands at
-:: execution time, after the block structure is parsed, and is safe.
+:: Resolve ISCC.exe OUTSIDE any block. %ProgramFiles(x86)% carries parens in
+:: its VALUE, and inside a parenthesized block even quoted parens break cmd's
+:: block scanner ('not was unexpected at this time.'). On a plain line quoted
+:: parens are harmless, so resolve the path here, then guard the rest below.
 set "PF86=%ProgramFiles(x86)%"
 set "PF=%ProgramFiles%"
 set "ISCC="
+if exist "%PF86%\Inno Setup 6\ISCC.exe" set "ISCC=%PF86%\Inno Setup 6\ISCC.exe"
+if not defined ISCC if exist "%PF%\Inno Setup 6\ISCC.exe" set "ISCC=%PF%\Inno Setup 6\ISCC.exe"
 if not "%DOWNLOAD_ONLY%"=="1" (
-    for %%p in ("!PF86!\Inno Setup 6\ISCC.exe" "!PF!\Inno Setup 6\ISCC.exe") do if exist "%%~p" set "ISCC=%%~p"
+    where ISCC >nul 2>&1
+    if not errorlevel 1 set "ISCC=ISCC"
     if not defined ISCC (
-        where ISCC >nul 2>&1
-        if not errorlevel 1 set "ISCC=ISCC"
-    )
-    if not defined ISCC (
-        echo [ERROR] Inno Setup 6 (ISCC.exe) not found.
+        echo [ERROR] Inno Setup 6 ISCC.exe not found.
         echo         Install it from https://jrsoftware.org/isinfo.php and re-run.
         exit /b 1
     )
-    rem !ISCC! (not %ISCC%) so the echoed value is the one actually found
-    rem after the where/for above (%%-expansion happens at block-parse time).
+    rem !ISCC! so the echoed value is the one actually found after where.
     echo  [OK] Inno Setup compiler: !ISCC!
 )
 echo.
@@ -88,7 +85,7 @@ if not exist "%CACHE%\mysql-%MYSQL_VERSION%-winx64.zip" set "DL=1"
 if not exist "%CACHE%\nssm-%NSSM_VERSION%.zip" set "DL=1"
 
 if "%DL%"=="1" (
-    echo  Downloading runtimes into %CACHE%  (one-time; ~350 MB total)...
+    echo  Downloading runtimes into %CACHE%  one-time ~350 MB total...
     powershell -NoProfile -ExecutionPolicy Bypass -Command ^
       "$ProgressPreference='SilentlyContinue';" ^
       "if (!(Test-Path '%CACHE%\node-%NODE_VERSION%-win-x64.zip')) { Invoke-WebRequest -Uri '%NODE_URL%' -OutFile '%CACHE%\node-%NODE_VERSION%-win-x64.zip' -UseBasicParsing };" ^
@@ -106,7 +103,7 @@ if "%DL%"=="1" (
 if "%DOWNLOAD_ONLY%"=="1" (
     echo.
     echo  [OK] Download-only mode: runtimes cached in %CACHE%
-    echo       (node, mysql, nssm). Exiting before extract/build.
+    echo       node, mysql, nssm - exiting before extract/build.
     exit /b 0
 )
 
