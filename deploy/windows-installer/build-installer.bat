@@ -7,14 +7,14 @@ color 0A
 ::  Builds the self-contained MyLikita Windows installer.
 ::  MUST run on a 64-bit WINDOWS machine with Inno Setup 6 installed.
 ::  Produces: deploy\windows-installer\dist\output\MyLikita-Setup-<ver>.exe
-;;
-;;  What it does:
-;;   1. Downloads Node.js, MySQL (ZIP build) and NSSM into dist\cache
-;;   2. Builds the React frontend (with a server-IP placeholder)
-;;   3. Copies the backend and installs its dependencies (prebuilt node_modules)
-;;   4. Copies the Inno Setup script + helper scripts + prime-db.sql
-;;   5. Compiles the single-file installer with ISCC.exe
-;; ============================================================================
+::
+::  What it does:
+::   1. Downloads Node.js, MySQL (ZIP build) and NSSM into dist\cache
+::   2. Builds the React frontend (with a server-IP placeholder)
+::   3. Copies the backend and installs its dependencies (prebuilt node_modules)
+::   4. Copies the Inno Setup script + helper scripts + prime-db.sql
+::   5. Compiles the single-file installer with ISCC.exe
+:: ============================================================================
 
 set "HERE=%~dp0"
 set "ROOT=%HERE%..\.."
