@@ -174,6 +174,9 @@ if errorlevel 1 (
     popd
     exit /b 1
 )
+rem The app is large (react-virtualized, ckeditor, ...): Vite minification
+rem blows past Node's 2GB default heap on Windows runners.
+set "NODE_OPTIONS=--max-old-space-size=4096"
 call npm run build
 if errorlevel 1 (
     echo  [ERROR] Frontend build failed.
