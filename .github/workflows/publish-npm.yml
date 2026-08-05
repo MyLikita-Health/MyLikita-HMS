@@ -75,7 +75,18 @@ jobs:
         if: ${{ github.event.inputs.dry-run != 'true' }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish --access public
+        # Idempotent: a re-run (e.g. after a force-retagged release) must not
+        # die on 'cannot publish over previously published versions' — if the
+        # version is already on the registry, treat it as success.
+        run: |
+          ver="$(node -p "require('./package.json').version")"
+          if npm publish --access public; then
+            echo "[OK] published @mylikita/booking-widget@${ver}"
+          elif npm view "@mylikita/booking-widget@${ver}" >/dev/null 2>&1; then
+            echo "[warn] @mylikita/booking-widget@${ver} already on the registry — treating as success"
+          else
+            echo "[fail] npm publish failed and the version is not on the registry"; exit 1
+          fi
 
       - name: Dry-run publish (no upload)
         working-directory: packages/booking-widget
@@ -91,18 +102,25 @@ jobs:
         if: ${{ github.event.inputs.dry-run != 'true' && github.event_name == 'push' }}
         shell: bash
         run: |
-          # npm versions have no leading 'v' (tag v0.1.0 → version 0.1.0)
+          # npm versions have no leading 'v' (tag v0.1.0 → version 0.1.0).
+          # Registry→CDN propagation can take a while on a cold cache, so
+          # retry up to ~100s and dump diagnostics if it still fails.
           ver="${GITHUB_REF_NAME#v}"
           url="https://unpkg.com/@mylikita/booking-widget@${ver}"
           ok=""
-          for i in 1 2 3 4 5; do
+          for i in $(seq 1 20); do
             body="$(curl -fsSL "$url" 2>/dev/null)" || true
             if printf '%s' "$body" | grep -q 'MyLikitaBookingWidget'; then ok=1; break; fi
-            sleep 2
+            sleep 5
           done
-          [ -n "$ok" ] \
-            && echo "[OK] unpkg serves the IIFE (global MyLikitaBookingWidget)" \
-            || { echo "[FAIL] unpkg $url did not expose MyLikitaBookingWidget after 5 tries"; exit 1; }
+          if [ -n "$ok" ]; then
+            echo "[OK] unpkg serves the IIFE (global MyLikitaBookingWidget)"
+          else
+            code="$(curl -s -o /tmp/unpkg-body -w '%{http_code}' "$url" || true)"
+            echo "[FAIL] unpkg $url not serving after 20 tries (HTTP $code)"
+            head -c 300 /tmp/unpkg-body 2>/dev/null || true
+            exit 1
+          fi
 
   publish-widget-react:
     name: Publish @mylikita/booking-widget-react
@@ -138,7 +156,18 @@ jobs:
         if: ${{ github.event.inputs.dry-run != 'true' }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish --access public
+        # Idempotent: a re-run (e.g. after a force-retagged release) must not
+        # die on 'cannot publish over previously published versions' — if the
+        # version is already on the registry, treat it as success.
+        run: |
+          ver="$(node -p "require('./package.json').version")"
+          if npm publish --access public; then
+            echo "[OK] published @mylikita/booking-widget-react@${ver}"
+          elif npm view "@mylikita/booking-widget-react@${ver}" >/dev/null 2>&1; then
+            echo "[warn] @mylikita/booking-widget-react@${ver} already on the registry — treating as success"
+          else
+            echo "[fail] npm publish failed and the version is not on the registry"; exit 1
+          fi
 
       - name: Dry-run publish (no upload)
         working-directory: packages/booking-widget-react
@@ -149,15 +178,22 @@ jobs:
         if: ${{ github.event.inputs.dry-run != 'true' && github.event_name == 'push' }}
         shell: bash
         run: |
-          # npm versions have no leading 'v' (tag v0.1.0 → version 0.1.0)
+          # npm versions have no leading 'v' (tag v0.1.0 → version 0.1.0).
+          # Registry→CDN propagation can take a while on a cold cache, so
+          # retry up to ~100s and dump diagnostics if it still fails.
           ver="${GITHUB_REF_NAME#v}"
           url="https://unpkg.com/@mylikita/booking-widget-react@${ver}"
           ok=""
-          for i in 1 2 3 4 5; do
+          for i in $(seq 1 20); do
             body="$(curl -fsSL "$url" 2>/dev/null)" || true
             if printf '%s' "$body" | grep -q 'createBookingWidget'; then ok=1; break; fi
-            sleep 2
+            sleep 5
           done
-          [ -n "$ok" ] \
-            && echo "[OK] unpkg serves the bundle (exports createBookingWidget)" \
-            || { echo "[FAIL] unpkg $url did not expose createBookingWidget after 5 tries"; exit 1; }
+          if [ -n "$ok" ]; then
+            echo "[OK] unpkg serves the bundle (exports createBookingWidget)"
+          else
+            code="$(curl -s -o /tmp/unpkg-body -w '%{http_code}' "$url" || true)"
+            echo "[FAIL] unpkg $url not serving after 20 tries (HTTP $code)"
+            head -c 300 /tmp/unpkg-body 2>/dev/null || true
+            exit 1
+          fi
