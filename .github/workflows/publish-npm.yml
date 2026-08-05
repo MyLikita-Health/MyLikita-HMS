@@ -3,21 +3,23 @@ name: Publish npm Packages
 # Publishes @mylikita/booking-widget and @mylikita/booking-widget-react to
 # the public npm registry whenever a SEMVER tag (e.g. v0.1.0) is pushed.
 #
-# Gate: the `secrets` context is NOT readable in `if:` conditions (job-level
-# or step-level — GitHub's parser rejects it), so the NPM_TOKEN presence
-# check is exposed through job-level `env` and the jobs gate on that. Before
-# the first run you must:
-#   1. create the npm account + @mylikita org (only org members can publish
-#      to the scope) — npmjs.com → Organizations,
-#   2. generate a Publish token and store it as the NPM_TOKEN repo secret.
+# Requires the NPM_TOKEN repo secret (a Publish-scope npm token for an
+# account that OWNS the @mylikita org/scope). If it's missing, the publish
+# step fails with an auth error — intentionally loud, so a release tag that
+# didn't reach npm is never mistaken for a success.
 #
 # Ordering matters: the React wrapper depends on the vanilla widget (exact
 # version 0.1.0), so the widget is published FIRST, then the wrapper — and
 # only if the widget publish succeeded.
 #
 # Tag pattern is semver-only ('v[0-9]*.[0-9]*.[0-9]*') so the installer
-# test tag v0.0.1-test never triggers a publish. Add a dry-run switch for
-# manual testing from the Actions tab (unpkg verification is skipped then).
+# test tag v0.0.1-test never triggers a publish. A `workflow_dispatch`
+# dry-run switch is available for manual testing from the Actions tab
+# (unpkg verification is skipped then).
+#
+# Note: GitHub's workflow parser rejects the `secrets` and `env` contexts
+# in `if:` conditions (job- and step-level), so conditions here only use
+# the `github` and `inputs` contexts; the token is passed via step `env`.
 #
 # Subsequent releases: bump the version in BOTH package.json files (and the
 # react wrapper's `@mylikita/booking-widget` dependency to match), then push
@@ -42,12 +44,6 @@ jobs:
     name: Publish @mylikita/booking-widget
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # No NPM_TOKEN yet (scope not created / secret not added) → skip quietly
-    # instead of failing the run. `env` is the only place secrets is readable,
-    # so the gate is computed here and tested in the job-level `if`.
-    env:
-      NPM_TOKEN_SET: ${{ secrets.NPM_TOKEN != '' }}
-    if: ${{ env.NPM_TOKEN_SET == 'true' }}
 
     steps:
       - name: Checkout
@@ -113,9 +109,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: publish-widget
-    env:
-      NPM_TOKEN_SET: ${{ secrets.NPM_TOKEN != '' }}
-    if: ${{ env.NPM_TOKEN_SET == 'true' }}
 
     steps:
       - name: Checkout
