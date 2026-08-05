@@ -268,7 +268,16 @@ rem offline installs] as needing onboarding, and flag the deployment as
 rem offline. The post-login redirect then sends the first admin to the
 rem /onboarding/claim wizard, which finalizes the facility profile and
 rem replaces the shared default admin credentials [admin/123456].
-"%MYSQL_DIR%\bin\mysql.exe" -u root -p!DB_PASS! --port=!DB_PORT! "!DB_NAME!" -e "UPDATE hospitals SET deployment_type='offline', onboarding_status='pending', onboarding_step=0 WHERE id='1be0a9da-bff9-4ab6-a36c-edfd8ca88f1a' AND (onboarding_status IS NULL OR onboarding_status='' OR deployment_type IS NULL);" >> "%INSTALL_LOG%" 2>&1
+rem
+rem Discriminator: onboarding_completed_at IS NULL, NOT the status columns.
+rem The onboarding migration backfills EVERY existing row (including the
+rem seeded facility) to onboarding_status='complete' + deployment_type='cloud'
+rem right after the import, so a guard on status/deployment_type would never
+rem match on a fresh install. onboarding_completed_at is only set by the claim
+rem wizard when onboarding genuinely finishes - so a facility that completed
+rem onboarding and then survives a REINSTALL keeps its 'complete' state,
+rem while a fresh install (completed_at NULL) is correctly marked 'pending'.
+"%MYSQL_DIR%\bin\mysql.exe" -u root -p!DB_PASS! --port=!DB_PORT! "!DB_NAME!" -e "UPDATE hospitals SET deployment_type='offline', onboarding_status='pending', onboarding_step=0 WHERE id='1be0a9da-bff9-4ab6-a36c-edfd8ca88f1a' AND (onboarding_completed_at IS NULL);" >> "%INSTALL_LOG%" 2>&1
 if errorlevel 1 (
     call :log "[WARN] Could not mark seeded facility for onboarding (id may differ on this install)."
 ) else (
