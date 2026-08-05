@@ -26,6 +26,7 @@ var MyLikitaBookingWidget = (() => {
     TERMINAL_STATUSES: () => TERMINAL_STATUSES,
     createBooking: () => createBooking,
     createBookingWidget: () => createBookingWidget,
+    fetchProviders: () => fetchProviders,
     fetchStatus: () => fetchStatus,
     newExternalRef: () => newExternalRef,
     pollStatus: () => pollStatus,
@@ -52,6 +53,21 @@ var MyLikitaBookingWidget = (() => {
       throw apiError(res.status, body, "create");
     }
     return { ok: true, duplicate: false, booking_ref: body?.booking_ref, status: body?.status || "pending_confirmation" };
+  }
+  async function fetchProviders({ relayUrl, websiteKey, signal }) {
+    const res = await fetch(`${trimUrl(relayUrl)}/v1/providers`, {
+      headers: { Authorization: `Bearer ${websiteKey}` },
+      signal
+    });
+    const body = await readJson(res);
+    if (!res.ok) throw apiError(res.status, body, "providers");
+    const list = Array.isArray(body?.providers) ? body.providers : [];
+    return list.map((p) => ({
+      external_id: p.external_id,
+      name: p.name || p.external_id,
+      specialty: p.specialty || null,
+      module: p.module || "general"
+    }));
   }
   async function fetchStatus({ relayUrl, websiteKey, bookingRef, signal }) {
     const res = await fetch(`${trimUrl(relayUrl)}/v1/bookings/${encodeURIComponent(bookingRef)}`, {
@@ -359,6 +375,10 @@ var MyLikitaBookingWidget = (() => {
       facilityId: options.facilityId,
       providers: options.providers || [],
       services: options.services || [],
+      // Phase C2/C3: fetch the facility's mapped provider list from the relay
+      // (GET /v1/providers) on mount and populate the doctor dropdown. The
+      // static `providers` option, when given, always wins and skips the fetch.
+      loadProviders: options.loadProviders === true && !(options.providers && options.providers.length),
       pollIntervalMs: options.pollIntervalMs ?? 5e3,
       maxTries: options.maxTries ?? 12,
       text: { ...DEFAULT_TEXT, ...options.text || {} },
@@ -392,8 +412,23 @@ var MyLikitaBookingWidget = (() => {
     phoneEmail.append(phone.wrap, email.wrap);
     const provider = fieldSelect("provider", t.provider, [
       { value: "", label: t.noPreference },
-      ...opts.providers.map((p) => ({ value: p.external_id, label: p.label || p.external_id }))
+      ...opts.providers.map((p) => ({ value: p.external_id, label: p.label || p.name || p.external_id }))
     ]);
+    function setProviderList(list) {
+      const current = provider.input.value;
+      provider.input.replaceChildren();
+      const noPref = document.createElement("option");
+      noPref.value = "";
+      noPref.textContent = t.noPreference;
+      provider.input.append(noPref);
+      for (const p of list || []) {
+        const opt = document.createElement("option");
+        opt.value = p.external_id;
+        opt.textContent = p.label || p.name || p.external_id;
+        provider.input.append(opt);
+      }
+      if (current) provider.input.value = current;
+    }
     const service = opts.services.length ? fieldSelect("service", t.service, [
       { value: "", label: "\u2014" },
       ...opts.services.map((s) => ({ value: s, label: s }))
@@ -540,10 +575,29 @@ var MyLikitaBookingWidget = (() => {
       datetime.input.min = toLocalInputValue(/* @__PURE__ */ new Date());
     }
     root.replaceChildren(title, subtitle, form, statusView);
+    let destroyProvidersFetch = null;
+    if (opts.loadProviders) {
+      const provCtrl = new AbortController();
+      (async () => {
+        try {
+          const list = await fetchProviders({
+            relayUrl: opts.relayUrl,
+            websiteKey: opts.websiteKey,
+            signal: provCtrl.signal
+          });
+          if (alive && !provCtrl.signal.aborted) setProviderList(list);
+        } catch (err) {
+          if (!alive || err?.name === "AbortError") return;
+          if (opts.onError) safeCall(opts.onError, err);
+        }
+      })();
+      destroyProvidersFetch = () => provCtrl.abort();
+    }
     return {
       destroy() {
         alive = false;
         if (pollCtrl) pollCtrl.abort();
+        if (destroyProvidersFetch) destroyProvidersFetch();
         root.replaceChildren();
         root.classList.remove("mylikita-widget");
       },

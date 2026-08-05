@@ -104,6 +104,17 @@
         return json(201, { booking_ref, status: 'pending_confirmation' });
       }
 
+      if (method === 'GET' && u.pathname === '/v1/providers') {
+        log('<b>[mock relay]</b> GET /v1/providers — serving the mapped provider list');
+        return json(200, {
+          facility_id: FACILITY,
+          providers: [
+            { external_id: 'dr-khalil', name: 'Dr. Khalil', specialty: 'General medicine' },
+            { external_id: 'dr-amina', name: 'Dr. Amina', specialty: 'Dentistry' },
+          ],
+        });
+      }
+
       if (method === 'GET' && u.pathname.startsWith('/v1/bookings/')) {
         const ref = decodeURIComponent(u.pathname.split('/').pop());
         const b = bookings.get(ref);
@@ -150,11 +161,14 @@
       relayUrl: 'https://api.mylikita.clinic',
       websiteKey: KEY,
       facilityId: FACILITY,
-      providers: [{ external_id: 'dr-khalil', label: 'Dr. Khalil' }],
+      // Phase C2/C3: no static providers — load them from the relay's
+      // GET /v1/providers on mount (the mock serves the mapped list).
+      loadProviders: true,
       pollIntervalMs: 800,
       maxTries: 20,
       theme: { primary: '#0d9488', primaryDark: '#0f766e' },
       onStatus: (s) => log('<b>[widget 2]</b> status → ' + s.status),
+      onError: (e) => log('<b>[widget 2]</b> provider fetch failed (non-fatal): ' + e.message),
     });
 
     document.querySelectorAll('[data-theme]').forEach((btn) => {

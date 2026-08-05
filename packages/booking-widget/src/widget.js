@@ -8,7 +8,7 @@
  * Imported from index.js — not meant to be used directly.
  */
 
-import { createBooking, fetchStatus, pollStatus, newExternalRef } from './client.js';
+import { createBooking, fetchStatus, pollStatus, newExternalRef, fetchProviders } from './client.js';
 import { statusCopy, TERMINAL_STATUSES } from './state.js';
 import { resolveTheme } from './theme.js';
 import { STYLES as STYLES_CSS } from './styles.js';
@@ -49,6 +49,10 @@ export function createBookingWidget(element, options = {}) {
     facilityId: options.facilityId,
     providers: options.providers || [],
     services: options.services || [],
+    // Phase C2/C3: fetch the facility's mapped provider list from the relay
+    // (GET /v1/providers) on mount and populate the doctor dropdown. The
+    // static `providers` option, when given, always wins and skips the fetch.
+    loadProviders: options.loadProviders === true && !(options.providers && options.providers.length),
     pollIntervalMs: options.pollIntervalMs ?? 5000,
     maxTries: options.maxTries ?? 12,
     text: { ...DEFAULT_TEXT, ...(options.text || {}) },
@@ -97,8 +101,25 @@ export function createBookingWidget(element, options = {}) {
 
   const provider = fieldSelect('provider', t.provider, [
     { value: '', label: t.noPreference },
-    ...opts.providers.map((p) => ({ value: p.external_id, label: p.label || p.external_id })),
+    ...opts.providers.map((p) => ({ value: p.external_id, label: p.label || p.name || p.external_id })),
   ]);
+  // Repopulate the provider <select> with a fetched/static list, preserving
+  // the current selection when it still exists.
+  function setProviderList(list) {
+    const current = provider.input.value;
+    provider.input.replaceChildren();
+    const noPref = document.createElement('option');
+    noPref.value = '';
+    noPref.textContent = t.noPreference;
+    provider.input.append(noPref);
+    for (const p of list || []) {
+      const opt = document.createElement('option');
+      opt.value = p.external_id;
+      opt.textContent = p.label || p.name || p.external_id;
+      provider.input.append(opt);
+    }
+    if (current) provider.input.value = current;
+  }
   const service = opts.services.length
     ? fieldSelect('service', t.service, [
         { value: '', label: '—' },
@@ -270,11 +291,37 @@ export function createBookingWidget(element, options = {}) {
 
   root.replaceChildren(title, subtitle, form, statusView);
 
+  // ── async provider load (Phase C2/C3) ────────────────────────────────────
+  // When loadProviders is on, fetch the facility's mapped doctors and fill the
+  // dropdown. Failures are non-fatal: the widget still works with "No
+  // preference" (an unmapped provider slug simply arrives unassigned). The
+  // abort ties the fetch to the widget's lifecycle so destroy() can't leak it.
+  let destroyProvidersFetch = null;
+  if (opts.loadProviders) {
+    const provCtrl = new AbortController();
+    (async () => {
+      try {
+        const list = await fetchProviders({
+          relayUrl: opts.relayUrl,
+          websiteKey: opts.websiteKey,
+          signal: provCtrl.signal,
+        });
+        if (alive && !provCtrl.signal.aborted) setProviderList(list);
+      } catch (err) {
+        if (!alive || err?.name === 'AbortError') return;
+        if (opts.onError) safeCall(opts.onError, err);
+        // keep "No preference" — a quiet fallback beats a broken form
+      }
+    })();
+    destroyProvidersFetch = () => provCtrl.abort();
+  }
+
   // ── public API ──────────────────────────────────────────────────────────
   return {
     destroy() {
       alive = false;
       if (pollCtrl) pollCtrl.abort(); // stop the in-flight booking/poll immediately
+      if (destroyProvidersFetch) destroyProvidersFetch(); // cancel the provider fetch
       root.replaceChildren();
       root.classList.remove('mylikita-widget');
     },

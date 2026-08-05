@@ -25,6 +25,6 @@
  */
 
 export { createBookingWidget } from './widget.js';
-export { createBooking, fetchStatus, pollStatus, newExternalRef } from './client.js';
+export { createBooking, fetchStatus, pollStatus, newExternalRef, fetchProviders } from './client.js';
 export { STATUS_COPY, statusCopy, TERMINAL_STATUSES } from './state.js';
 export { DEFAULT_THEME, resolveTheme } from './theme.js';

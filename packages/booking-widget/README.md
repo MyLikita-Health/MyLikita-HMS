@@ -47,7 +47,8 @@ createBookingWidget(document.getElementById('booking'), { relayUrl, websiteKey, 
 | `relayUrl` | string | — | **required** — relay base URL, e.g. `https://api.mylikita.clinic` |
 | `websiteKey` | string | — | **required** — your public client id (Bearer on every request) |
 | `facilityId` | string | — | **required** — the hospital's public facility id |
-| `providers` | array | `[]` | `[{ external_id, label }]` — shown as a "Preferred doctor" select; unmapped slugs simply arrive unassigned (never block on them) |
+| `providers` | array | `[]` | `[{ external_id, label }]` — shown as a "Preferred doctor" select; unmapped slugs simply arrive unassigned (never block on them). When provided, it wins and no fetch happens |
+| `loadProviders` | bool | `false` | **Phase C2/C3** — fetch the facility's mapped providers from the relay (`GET /v1/providers`) on mount and populate the doctor dropdown automatically. Ignored when `providers` is non-empty. A fetch failure is non-fatal: the widget keeps "No preference" and still works |
 | `services` | array | `[]` | `['General consultation', …]` — shown as a service select (free-text input otherwise) |
 | `durationMins` | number | `30` | sent with the booking |
 | `pollIntervalMs` | number | `5000` | how often to poll the booking status |
@@ -60,6 +61,29 @@ createBookingWidget(document.getElementById('booking'), { relayUrl, websiteKey, 
 | `onError` | fn | — | `(err) => …` on create failure |
 
 Returns `{ destroy(), reset(), getForm() }`.
+
+## Provider list (doctor dropdown) — `loadProviders`
+
+The hospital controls which doctors appear on your website. Staff map a
+website slug (`external_id`) to each doctor in the hub **Providers** tab; the
+hospital server pushes those mapped providers to the relay on every sync cycle
+(`POST /v1/out/providers`), and the widget fetches them on mount
+(`GET /v1/providers`):
+
+```js
+createBookingWidget(el, {
+  relayUrl, websiteKey, facilityId,
+  loadProviders: true,   // fetch the mapped doctor list instead of hardcoding
+});
+```
+
+- Only **mapped, active** providers are served — the hospital decides what the
+  website sees (names + slugs only; no phones, no emails, no PHI).
+- The dropdown appears the moment the fetch resolves; a slow/offline relay
+  degrades gracefully to "No preference" (a submitted booking with no doctor
+  simply arrives unassigned — the hospital assigns one).
+- Unmapping a doctor on the hospital side removes them from the dropdown on
+  the next sync cycle (~2 min).
 
 ## Idempotency & double-submit (built in)
 

@@ -4,7 +4,7 @@
  * mocked global.fetch. Run with `npm test` (node test/widget.test.js).
  */
 import assert from 'node:assert/strict';
-import { createBooking, fetchStatus, pollStatus, newExternalRef } from '../src/client.js';
+import { createBooking, fetchStatus, pollStatus, newExternalRef, fetchProviders } from '../src/client.js';
 import { statusCopy, TERMINAL_STATUSES } from '../src/state.js';
 import { resolveTheme, DEFAULT_THEME } from '../src/theme.js';
 
@@ -86,6 +86,44 @@ const calls1 = installFetch(freshBookingRoutes());
     (err) => err.code === 'validation_error' && err.status === 400 && /appt_datetime/.test(err.message),
   );
   ok('400 validation_error throws with code + status');
+}
+
+console.log('client.fetchProviders');
+{
+  const calls = installFetch(() => ({
+    status: 200,
+    body: {
+      facility_id: 'F1',
+      providers: [
+        { external_id: 'dr-khalil', name: 'Dr. Khalil', specialty: 'General medicine', module: 'general' },
+        { external_id: 'dr-amina', name: 'Dr. Amina', specialty: 'Dentistry', module: 'dental' },
+      ],
+    },
+  }));
+  const list = await fetchProviders({ relayUrl: BASE, websiteKey: KEY });
+  assert.equal(list.length, 2);
+  assert.equal(list[0].external_id, 'dr-khalil');
+  assert.equal(list[0].name, 'Dr. Khalil');
+  assert.equal(list[0].specialty, 'General medicine');
+  assert.equal(calls[0].auth, `Bearer ${KEY}`, 'Bearer header');
+  assert.equal(calls[0].path, '/v1/providers');
+  ok('fetchProviders returns normalized mapped provider list with Bearer auth');
+}
+
+{
+  const calls = installFetch(() => ({ status: 200, body: { facility_id: 'F1', providers: [] } }));
+  const empty = await fetchProviders({ relayUrl: BASE, websiteKey: KEY });
+  assert.equal(empty.length, 0);
+  ok('fetchProviders returns [] for an empty registry (valid fallback)');
+}
+
+{
+  installFetch(() => ({ status: 401, body: { error: 'unauthorized', message: 'Invalid key' } }));
+  await assert.rejects(
+    () => fetchProviders({ relayUrl: BASE, websiteKey: 'bad-key' }),
+    (err) => err.status === 401 && err.code === 'unauthorized',
+  );
+  ok('fetchProviders throws with code + status on 401');
 }
 
 console.log('client.fetchStatus');

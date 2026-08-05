@@ -4,6 +4,7 @@
  *
  *   POST /v1/bookings          → { booking_ref, status } | 400/401/403/409/429/500
  *   GET  /v1/bookings/:ref     → { booking_ref, status, appt_ref? }
+ *   GET  /v1/providers         → { facility_id, providers: [{external_id, name, ...}] }
  *
  * Auth is `Authorization: Bearer <website_key>` on every request. The
  * website_key is a public client id by design (never a secret).
@@ -36,6 +37,30 @@ export async function createBooking({ relayUrl, websiteKey, payload, signal }) {
     throw apiError(res.status, body, 'create');
   }
   return { ok: true, duplicate: false, booking_ref: body?.booking_ref, status: body?.status || 'pending_confirmation' };
+}
+
+/**
+ * Fetch the facility's mapped provider list (Phase C2/C3) — the doctors the
+ * hospital has published for the website's dropdown. The hospital pushes this
+ * registry to the relay on its sync cycle; the website only ever sees mapped,
+ * active providers (names + slugs, no PHI). Returns a normalized array
+ * `[{ external_id, name, specialty, module }]`; an empty list is valid (the
+ * widget falls back to "No preference").
+ */
+export async function fetchProviders({ relayUrl, websiteKey, signal }) {
+  const res = await fetch(`${trimUrl(relayUrl)}/v1/providers`, {
+    headers: { Authorization: `Bearer ${websiteKey}` },
+    signal,
+  });
+  const body = await readJson(res);
+  if (!res.ok) throw apiError(res.status, body, 'providers');
+  const list = Array.isArray(body?.providers) ? body.providers : [];
+  return list.map((p) => ({
+    external_id: p.external_id,
+    name: p.name || p.external_id,
+    specialty: p.specialty || null,
+    module: p.module || 'general',
+  }));
 }
 
 /** Fetch a booking's current status. */
