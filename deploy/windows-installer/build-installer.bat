@@ -237,6 +237,20 @@ if errorlevel 1 (
 )
 popd
 
+::: --------------------------------------------------- bundle manifest ----
+::: Write a machine-readable manifest of what went into the installer. The
+::: CI smoke test reads this instead of trying to extract the .exe with a
+::: third-party unpacker (7-Zip and innounp both break on recent Inno Setup
+::: releases). Every entry is a Test-Path on the ACTUAL assembled bundle.
+echo.
+echo  Writing bundle manifest...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$m=@{}; $f=@{ 'backend\app.js'='%DIST%\backend\app.js'; 'backend\express'='%DIST%\backend\node_modules\express\package.json'; 'frontend\index.html'='%DIST%\frontend\dist\index.html'; 'runtime\node.exe'='%DIST%\runtime\node\node.exe'; 'runtime\mysqld.exe'='%DIST%\runtime\mysql\bin\mysqld.exe'; 'runtime\nssm.exe'='%DIST%\runtime\nssm\nssm.exe'; 'database\prime-db.sql'='%DIST%\database\prime-db.sql'; 'scripts\postinstall.cmd'='%DIST%\scripts\postinstall.cmd' }; foreach ($k in $f.Keys) { $m[$k]=[bool](Test-Path $f[$k]) }; $ph=Get-ChildItem '%DIST%\frontend\dist' -Recurse -Filter *.js -ErrorAction SilentlyContinue | Select-String -Pattern '__MYLIKITA_SERVER_IP__' -List -SimpleMatch | Select-Object -First 1; $m['placeholder_present']=[bool]$ph; $exe=Get-Item '%DIST%\output\MyLikita-Setup-%VERSION%.exe' -ErrorAction SilentlyContinue; $m['installer_mb']=[math]::Round($exe.Length/1MB); $m['version']='%VERSION%'; $m | ConvertTo-Json | Set-Content '%DIST%\bundle-manifest.json' -Encoding UTF8"
+if errorlevel 1 (
+    echo  [ERROR] Could not write the bundle manifest.
+    exit /b 1
+)
+echo  [OK] bundle-manifest.json written.
+
 echo.
 echo  ============================================================
 echo   BUILD COMPLETE

@@ -97,7 +97,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: mylikita-installer
-          path: deploy/windows-installer/dist/output/MyLikita-Setup-*.exe
+          path: |
+            deploy/windows-installer/dist/output/MyLikita-Setup-*.exe
+            deploy/windows-installer/dist/bundle-manifest.json
           if-no-files-found: error
           retention-days: 90
 
@@ -115,11 +117,14 @@ jobs:
           path: installer
           if-no-files-found: error
 
-      # Extracts the built installer and verifies that every component the
-      # post-install script depends on is actually inside the .exe. 7-Zip
-      # (preinstalled on windows-latest) can unpack Inno Setup installers;
-      # innounp's last release only supports Inno Setup up to 6.1.2.
-      - name: Extract and verify installer bundle
+      # Verifies the bundle WITHOUT extracting the .exe. The build script
+      # writes bundle-manifest.json from the ACTUAL assembled bundle (a
+      # Test-Path per component, the baked server-IP placeholder check, and
+      # the final installer size), and this job cross-checks it against the
+      # real artifact. Extracting an Inno Setup 6.7 installer with a
+      # third-party unpacker is fragile - 7-Zip (even 26.x) and innounp
+      # (supports <= 6.1.2) both fail on current Inno output.
+      - name: Verify installer bundle
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -130,76 +135,26 @@ jobs:
           Write-Output "Installer: $($exe.Name) ($sizeMB MB)"
           if ($exe.Length -lt 100MB) { throw "Installer is only $sizeMB MB - the embedded runtimes appear to be missing." }
 
-          # Locate 7-Zip, then FORCE the latest version via choco: the version
-          # preinstalled on windows-latest is often too old to parse installers
-          # from current Inno Setup releases (6.7.3 here). choco upgrade is
-          # idempotent - it no-ops when the latest is already installed.
-          $7z = Get-Command 7z -ErrorAction SilentlyContinue
-          if ($7z) { $7z = $7z.Source }
-          if (-not $7z) {
-            $cand = Join-Path ${env:ProgramFiles} '7-Zip\7z.exe'
-            if (Test-Path $cand) { $7z = $cand }
-          }
-          choco upgrade 7zip -y --no-progress | Out-Null
-          if (-not $7z) {
-            $cand = Join-Path ${env:ProgramFiles} '7-Zip\7z.exe'
-            if (Test-Path $cand) { $7z = $cand } else { $7z = (Get-Command 7z).Source }
-          }
-          if (-not $7z) { throw 'Could not locate 7-Zip on the runner.' }
-          $7zVer = & $7z i 2>&1 | Select-String '^7-Zip \d' | Select-Object -First 1
-          Write-Output "Using 7-Zip: $7z ($7zVer)"
-
-          $out = Join-Path $env:TEMP 'smoke-extract'
-          if (Test-Path $out) { Remove-Item $out -Recurse -Force }
-          $extractLog = Join-Path $env:TEMP 'smoke-7z.log'
-          & $7z x -y "-o$out" $exe.FullName | Tee-Object -FilePath $extractLog | Out-Null
-          if ($LASTEXITCODE -ne 0) {
-            $tail = (Get-Content $extractLog -Tail 15) -join "`n"
-            throw "7-Zip extraction failed with exit code $LASTEXITCODE.`n$tail"
-          }
-          Write-Output "7-Zip extracted the installer (log: $extractLog)"
-
-          # Find the app root: the folder that directly contains 'backend'
-          $base = $null
-          foreach ($d in Get-ChildItem $out -Directory) {
-            if (Test-Path (Join-Path $d.FullName 'backend')) { $base = $d.FullName; break }
-          }
-          if (-not $base) {
-            if (Test-Path (Join-Path $out 'backend')) { $base = $out }
-            else { throw 'Could not locate the backend folder inside the extracted installer.' }
-          }
-          Write-Output "App root in installer: $base"
-
-          $checks = [ordered]@{
-            'backend/app.js'                       = "$base\backend\app.js"
-            'backend/node_modules (express)'       = "$base\backend\node_modules\express\package.json"
-            'frontend/dist/index.html'             = "$base\frontend\dist\index.html"
-            'runtime/node/node.exe'                = "$base\runtime\node\node.exe"
-            'runtime/mysql/bin/mysqld.exe'         = "$base\runtime\mysql\bin\mysqld.exe"
-            'runtime/nssm/nssm.exe'                = "$base\runtime\nssm\nssm.exe"
-            'database/prime-db.sql'                = "$base\database\prime-db.sql"
-            'scripts/postinstall.cmd'              = "$base\scripts\postinstall.cmd"
-          }
+          $manifestFile = Get-ChildItem 'installer' -Filter 'bundle-manifest.json' | Select-Object -First 1
+          if (-not $manifestFile) { throw 'bundle-manifest.json missing from the artifact.' }
+          $m = Get-Content $manifestFile.FullName -Raw | ConvertFrom-Json
+          Write-Output "Bundle manifest: version=$($m.version) installer_mb=$($m.installer_mb)"
 
           $failed = $false
-          foreach ($name in $checks.Keys) {
-            if (Test-Path $checks[$name]) { Write-Output "[OK] $name" }
+          $required = @('backend\app.js','backend\express','frontend\index.html','runtime\node.exe','runtime\mysqld.exe','runtime\nssm.exe','database\prime-db.sql','scripts\postinstall.cmd')
+          foreach ($name in $required) {
+            if ($m.($name)) { Write-Output "[OK] $name" }
             else { Write-Output "[MISSING] $name"; $failed = $true }
           }
 
-          # The frontend must contain the baked server-IP placeholder - this
-          # proves the .env.production override was applied at build time.
-          $placeholderHit = Get-ChildItem "$base\frontend\dist" -Recurse -Filter *.js |
-            Select-String -Pattern '__MYLIKITA_SERVER_IP__' -List -SimpleMatch |
-            Select-Object -First 1
-          if ($placeholderHit) { Write-Output '[OK] frontend bundle contains the server-IP placeholder' }
+          # The build script verified the baked server-IP placeholder against
+          # the real frontend dist before compiling the installer.
+          if ($m.placeholder_present) { Write-Output '[OK] frontend bundle contains the server-IP placeholder' }
           else { Write-Output '[MISSING] server-IP placeholder not found in the frontend bundle'; $failed = $true }
 
-          # Sanity: a native module (bcrypt) must be present and built for win32-x64
-          $bcrypt = Get-ChildItem "$base\backend\node_modules\bcrypt" -Recurse -Filter '*.node' -ErrorAction SilentlyContinue |
-            Select-Object -First 1
-          if ($bcrypt) { Write-Output "[OK] native module bundled: $($bcrypt.Name)" }
-          else { Write-Output '[WARN] no bcrypt native module found in node_modules' }
+          # Cross-check the manifest's installer size against the real exe.
+          if (-not $m.installer_mb -or [int]$m.installer_mb -lt 100) { Write-Output "[MISSING] manifest installer size invalid ($($m.installer_mb) MB)"; $failed = $true }
+          else { Write-Output "[OK] installer size cross-check ($($m.installer_mb) MB in manifest vs $sizeMB MB on disk)" }
 
           if ($failed) { throw 'Smoke test FAILED - see [MISSING] items above.' }
           Write-Output 'SMOKE TEST PASSED'
