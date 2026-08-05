@@ -38,7 +38,9 @@ set "DOWNLOAD_ONLY=0"
 if /i "%MYLIKITA_DOWNLOAD_ONLY%"=="1" set "DOWNLOAD_ONLY=1"
 
 set "NODE_URL=https://nodejs.org/dist/%NODE_VERSION%/node-%NODE_VERSION%-win-x64.zip"
-set "MYSQL_URL=https://dev.mysql.com/get/Downloads/MySQL-8.0/mysql-%MYSQL_VERSION%-winx64.zip"
+:: dev.mysql.com/get is a flaky load balancer that intermittently serves an
+:: Oracle "Technical Difficulties" page - use the canonical archives URL.
+set "MYSQL_URL=https://cdn.mysql.com/archives/mysql-8.0/mysql-%MYSQL_VERSION%-winx64.zip"
 set "NSSM_URL=https://nssm.cc/release/nssm-%NSSM_VERSION%.zip"
 
 echo ============================================================
@@ -102,7 +104,9 @@ if "%DL%"=="1" (
         powershell -NoProfile -ExecutionPolicy Bypass -Command "$ProgressPreference='SilentlyContinue'; Invoke-WebRequest -Uri '%NSSM_URL%' -OutFile '%CACHE%\nssm-%NSSM_VERSION%.zip' -UseBasicParsing"
         if errorlevel 1 set "DLFAIL=1"
     )
-    if "%DLFAIL%"=="1" (
+    rem !DLFAIL! (delayed): %-expansion happens once at block entry, before
+    rem the set above runs - only delayed expansion sees the updated value.
+    if "!DLFAIL!"=="1" (
         echo  [ERROR] Download failed. Check internet access / URLs above.
         exit /b 1
     )
