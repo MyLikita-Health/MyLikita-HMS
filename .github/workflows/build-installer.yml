@@ -511,7 +511,7 @@ jobs:
           if (-not $resp.success) { throw 'Login with the claimed admin returned success=false.' }
           if (-not ($resp.token -like 'Bearer *')) { throw "No Bearer token for claimed admin: $($resp.token)" }
           $token = $resp.token.Substring(7)
-          if (($token -split '\\.').Count -ne 3) { throw 'Token is not a JWT (expected 3 dot-separated segments).' }
+          if (($token -split '\.').Count -ne 3) { throw 'Token is not a JWT (expected 3 dot-separated segments).' }
 
           # Verify the JWT signature with the installed JWT_SECRET (same
           # pattern as the pre-claim check).
