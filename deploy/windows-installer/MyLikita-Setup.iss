@@ -78,6 +78,21 @@ var
   ResultCode: Integer;
   AppDir: String;
 begin
+  { Stop the MyLikita app and MySQL services BEFORE files are overwritten.
+    On a reinstall (same version over an existing install) the app service
+    holds backend\app.js / node_modules / .env open; overwriting them fails
+    with a sharing violation and, in silent mode, the Abort-Retry-Ignore
+    prompt auto-aborts the whole install (exit code 5). Stopping first makes
+    reinstalls idempotent. MySQL keeps its data dir untouched - only the
+    service is stopped, and postinstall restarts it. Best-effort: on a fresh
+    install the services do not exist yet and the errors are ignored. }
+  if CurStep = ssInstall then
+  begin
+    Exec(ExpandConstant('{cmd}'),
+      '/c sc stop MyLikita & sc stop MyLikitaMySQL & ping -n 4 127.0.0.1 >nul',
+      '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  end;
+
   if CurStep = ssPostInstall then
   begin
     AppDir := ExpandConstant('{app}');

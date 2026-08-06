@@ -695,11 +695,25 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+          # Stop the app + MySQL services first: the running MyLikita service
+          # locks backend files, and overwriting them makes silent Inno Setup
+          # abort (exit code 5, no user to click Abort-Retry-Ignore). The
+          # installer also stops them at ssInstall, but stop here too so this
+          # check exercises a realistic reinstall over a live server.
+          sc.exe stop MyLikita 2>$null | Out-Null
+          sc.exe stop MyLikitaMySQL 2>$null | Out-Null
+          Start-Sleep -Seconds 4
+
           $exe = Get-ChildItem 'installer' -Filter *.exe | Select-Object -First 1
           if (-not $exe) { throw 'No installer .exe found in the artifact.' }
           $setupLog2 = Join-Path $env:TEMP 'mylikita-setup-2.log'
           $setupArgs = @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-',"/LOG=$setupLog2")
           $p = Start-Process -FilePath $exe.FullName -ArgumentList $setupArgs -Wait -PassThru
+          if ($p.ExitCode -ne 0) {
+            $logTail = ''
+            if (Test-Path $setupLog2) { $logTail = (Get-Content $setupLog2 -Tail 15) -join "`n" }
+            throw "Reinstall failed with exit code $($p.ExitCode). Setup log tail:`n$logTail"
+          }
           Write-Output "Reinstall exit code: $($p.ExitCode)"
 
       - name: Phase 2 - Verify database survived (no re-import, data intact)
