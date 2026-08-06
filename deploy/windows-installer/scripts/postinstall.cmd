@@ -263,6 +263,22 @@ if errorlevel 1 (
 popd
 call :log "Database migrations complete."
 
+:: ── Phase 3E: seed type-appropriate accessTo for the default admin ──
+:: The seeded facility (Amisal Dental Care) is a clinic with dental specialty.
+:: After migrations run, compute the correct accessTo from the facility type
+:: registry and update the default admin user.
+call :log "Seeding type-aware accessTo for the default admin..."
+pushd "%APP_ROOT%\scripts"
+"%NODE_DIR%\node.exe" seed-access.js "1be0a9da-bff9-4ab6-a36c-edfd8ca88f1a" >> "%INSTALL_LOG%" 2>&1
+set /a SEED_EXIT=!errorlevel!
+popd
+if !SEED_EXIT! neq 0 (
+    call :log "[WARN] seed-access.js failed (exit !SEED_EXIT!) - keeping legacy default accessTo."
+) else (
+    call :log "Default admin accessTo updated from facility type registry."
+)
+
+
 :: Mark the seeded facility (Amisal Dental Care, the default login used by
 rem offline installs] as needing onboarding, and flag the deployment as
 rem offline. The post-login redirect then sends the first admin to the

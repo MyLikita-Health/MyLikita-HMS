@@ -1,7 +1,7 @@
 # Facility Type Tailoring — Analysis & Enhancement Plan
 
 > **Date:** August 6, 2026
-> **Status:** Phase 1 ✅ → Phase 2 ✅ → Phase 3A ✅ (implicit) → Phase 3B-E ready
+> **Status:** Phase 1 ✅ → Phase 2 ✅ → Phase 3A ✅ → Phase 3E ✅ → Phase 4A ✅ → Specialties Mgmt ✅ → Sync Access ✅ → UI Redesign ✅ → Phase 3D/4B/5C/5D remaining
 
 ---
 
@@ -434,24 +434,53 @@ Each specialty seeds its own departments and starter services. A multi-specialty
 
 | Priority | Phase | Effort | Impact |
 |---|---|---|---|
-| **P0** | Phase 1A: Type registry | 2h | Foundation for everything |
-| **P0** | Phase 1B: Normalize types (migration) | 1h | Fixes case bugs |
-| **P0** | Phase 1C: Add specialties system (migration) | 2h | Specialty & multi-specialty foundation |
-| **P0** | Phase 2A: Wire type into onboarding accessTo | 3h | Core fix — closes Gap 1 |
-| **P1** | Phase 5A: Specialty-to-module mapping | 1.5h | What each specialty enables |
-| **P1** | Phase 3A: WelcomePage type filtering | 2h | User-visible improvement |
-| **P1** | Phase 2D: Sign-up type-aware defaults | 1h | Consistency for new users |
-| **P1** | Phase 5C: Multi-specialty onboarding picker | 2h | Admin selects specialties |
-| **P1** | Phase 5D: Specialty-specific departments/services | 1.5h | Right data per specialty |
-| **P2** | Phase 3E: Offline installer type flag | 2h | Offline installs get type-aware modules |
-| **P2** | Phase 4A: Backend type middleware | 2h | Security defense-in-depth |
-| **P2** | Phase 3D: Onboarding module preview | 1h | UX improvement |
-| **P2** | Phase 5E: Backfill existing facilities | 0.5h | Migrate existing clinics |
-| **P3** | Phase 4B: Centralize default data | 2h | Cleanup tech debt |
+| **P0** | Phase 1A: Type registry | 2h | ✅ Done |
+| **P0** | Phase 1B: Normalize types (migration) | 1h | ✅ Done |
+| **P0** | Phase 1C: Add specialties system (migration) | 2h | ✅ Done |
+| **P0** | Phase 2A: Wire type into onboarding accessTo | 3h | ✅ Done — closes Gap 1 |
+| **P1** | Phase 5A: Specialty-to-module mapping | 1.5h | ✅ Done (in facilityTypes.js) |
+| **P1** | Phase 3A: WelcomePage type filtering | 2h | ✅ Done via Phase 2 |
+| **P1** | Phase 2D: Sign-up type-aware defaults | 1h | ✅ Done |
+| **P1** | Specialties management UI + sync-access endpoint | 3h | ✅ Done — chip-based add/remove + POST sync-access |
+| **P1** | Phase 5C: Multi-specialty onboarding picker | 2h | Remaining |
+| **P1** | Phase 5D: Specialty-specific departments/services | 1.5h | Remaining |
+| **P2** | Phase 3E: Offline installer type flag | 2h | ✅ Done (seed-access.js) |
+| **P2** | Phase 4A: Backend type middleware | 2h | ✅ Done (requireModuleAccess) |
+| **P2** | Phase 3D: Onboarding module preview | 1h | Remaining |
+| **P2** | Phase 5E: Backfill existing facilities | 0.5h | Remaining |
+| **P3** | Phase 4B: Centralize default data | 2h | Remaining |
+| **P3** | UI Redesign — Super Admin Console | 3h | ✅ Done — matches admin module design |
 
 ---
 
-## 6. Risks & Mitigations
+## 6. UI Redesign — Super Admin Console (August 6, 2026) ✅
+
+Redesigned all super admin pages to blend with the existing admin module's design system:
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `SuperAdminLayout.jsx` | Sidebar matches AdminSidebar: `#0f172a` bg, 36px brand icon, blue active states, 10px uppercase labels. Gold crown icon. |
+| `PlatformOverview.jsx` | reactstrap `Container`/`Row`/`Col`/`Card`/`Table`/`Badge`. Matches ApproveAdmin/RoleManagement patterns. |
+| `ManageFacilities.jsx` | reactstrap `Card`/`Input`/`Table`/`Modal`/`Badge`. Search bar in Card. Stat cards toggle filters. |
+| `ManageSpecialties.jsx` | reactstrap `Button`/`Badge`. Consistent with admin module. |
+| `Sidebar.jsx` | Fixed `MdAdminPanelSettings`→`FaUserCog` (build breaker). |
+| `TopNav.jsx` | Same icon fix. |
+
+### Design alignment
+
+| Aspect | Before | After |
+|---|---|---|
+| Sidebar | Custom gradient | `#0f172a` matches AdminSidebar |
+| Components | Pure inline styles | reactstrap Card/Table/Badge/Modal/Button |
+| Badges | Custom MetaBadge | reactstrap Badge with color prop |
+| Tables | Custom inline | reactstrap Table hover responsive sm |
+| Layout | Flex/grid | reactstrap Row/Col |
+
+---
+
+## 7. Risks & Mitigations
 
 | Risk | Mitigation |
 |---|---|
