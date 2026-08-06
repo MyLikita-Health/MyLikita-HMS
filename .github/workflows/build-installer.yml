@@ -899,13 +899,19 @@ jobs:
           ) -Encoding ASCII
           Write-Output '[OK] Wrote run-relay.cmd wrapper.'
 
-          sc.exe create MyLikitaRelay binPath= "cmd.exe /c `"$cmdPath`"" start= auto 2>$null | Out-Null
+          # sc.exe parses its arguments with its own mini-parser that stops
+          # reading the binPath= value at the first unquoted space. Passing
+          # "cmd.exe /c \"path.cmd\"" only registers "cmd.exe" as the binary.
+          # Workaround: create the service with a simple binPath (no spaces),
+          # then overwrite ImagePath in the registry with the full command.
+          sc.exe create MyLikitaRelay binPath= "$node" start= demand 2>$null | Out-Null
           if ($LASTEXITCODE -ne 0) {
-            $err = sc.exe create MyLikitaRelay binPath= "cmd.exe /c `"$cmdPath`"" start= auto 2>&1
+            $err = sc.exe create MyLikitaRelay binPath= "$node" start= demand 2>&1
             throw "sc create MyLikitaRelay failed: $err"
           }
-          # Set a human-readable description (optional, helps in services.msc).
-          New-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\MyLikitaRelay' -Name Description -Value 'MyLikita relay (CI install-test)' -PropertyType String -Force | Out-Null
+          $svcKey = 'HKLM:\SYSTEM\CurrentControlSet\Services\MyLikitaRelay'
+          Set-ItemProperty -Path $svcKey -Name ImagePath -Value "cmd.exe /c `"$cmdPath`"" -Force
+          New-ItemProperty -Path $svcKey -Name Description -Value 'MyLikita relay (CI install-test)' -PropertyType String -Force | Out-Null
           Write-Output '[OK] Registered MyLikitaRelay service.'
 
           # Start the service and wait for /health.
