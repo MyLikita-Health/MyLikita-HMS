@@ -879,18 +879,7 @@ jobs:
           Write-Output '[OK] Wrote relay .env with RELAY_* config.'
 
           # The relay resolves dependencies from the INSTALLED app's
-          # node_modules. NODE_PATH must be set before Node starts (it reads
-          # the env before dotenv loads the .env file written above).
-          #
-          # Windows services misread the registry's MultiString Environment
-          # value under some conditions (SYSTEM account encoding), so instead
-          # of relying on the registry we write a small .cmd wrapper that sets
-          # NODE_PATH and launches node — a single, self-contained shell that
-          # the service manager can invoke reliably.
-          #
-          # Write .env here too so the diagnostics can see the full config
-          # (the .cmd doesn't need to set RELAY_* vars — the relay's
-          # config.js loads them from __dirname/.env via dotenv).
+          # node_modules. NODE_PATH must be set before Node starts.
           $cmdPath = Join-Path $relayDir 'run-relay.cmd'
           Set-Content -Path $cmdPath -Value @(
             '@echo off',
@@ -899,23 +888,24 @@ jobs:
           ) -Encoding ASCII
           Write-Output '[OK] Wrote run-relay.cmd wrapper.'
 
-          # sc.exe parses its arguments with its own mini-parser that stops
-          # reading the binPath= value at the first unquoted space. Passing
-          # "cmd.exe /c \"path.cmd\"" only registers "cmd.exe" as the binary.
-          # Workaround: create the service with a simple binPath (no spaces),
-          # then overwrite ImagePath in the registry with the full command.
-          sc.exe create MyLikitaRelay binPath= "$node" start= demand 2>$null | Out-Null
+          # sc.exe strips everything after the first space in binPath=,
+          # and the SCM (Service Control Manager) rejects registry-overwritten
+          # ImagePath values with nested quotes. Use schtasks instead — a
+          # one-time scheduled task that runs immediately under SYSTEM,
+          # fully detached from the runner's job objects and without any
+          # of sc.exe's argument-parsing quirks.
+          $taskCmd = "cmd.exe /c `"$cmdPath`""
+          schtasks /create /tn MyLikitaRelay /tr $taskCmd /sc once /st 00:00 /ru SYSTEM /f 2>$null | Out-Null
           if ($LASTEXITCODE -ne 0) {
-            $err = sc.exe create MyLikitaRelay binPath= "$node" start= demand 2>&1
-            throw "sc create MyLikitaRelay failed: $err"
+            throw "schtasks /create MyLikitaRelay failed (exit $LASTEXITCODE)"
           }
-          $svcKey = 'HKLM:\SYSTEM\CurrentControlSet\Services\MyLikitaRelay'
-          Set-ItemProperty -Path $svcKey -Name ImagePath -Value "cmd.exe /c `"$cmdPath`"" -Force
-          New-ItemProperty -Path $svcKey -Name Description -Value 'MyLikita relay (CI install-test)' -PropertyType String -Force | Out-Null
-          Write-Output '[OK] Registered MyLikitaRelay service.'
+          Write-Output '[OK] Created scheduled task MyLikitaRelay.'
 
-          # Start the service and wait for /health.
-          Start-Service -Name 'MyLikitaRelay' -ErrorAction Stop
+          schtasks /run /tn MyLikitaRelay 2>$null | Out-Null
+          if ($LASTEXITCODE -ne 0) {
+            throw "schtasks /run MyLikitaRelay failed (exit $LASTEXITCODE)"
+          }
+          Write-Output '[OK] Triggered MyLikitaRelay task.'
 
           $deadline = (Get-Date).AddMinutes(2)
           $ok = $false
@@ -1236,23 +1226,18 @@ jobs:
           Write-Output '[OK] Phase B - widget polled the relay to confirmed. Full widget loop verified.'
 
       # =========================================================================
-      # B4 CLEANUP — stop and delete the temporary relay service so it doesn't
-      # leak across install-test runs on the same runner (unlikely, but clean).
-      # Runs with if: always() so it tears down even when a B4 step failed,
-      # preventing a ghost service from occupying port 46995 on the next run.
+      # B4 CLEANUP — delete the temporary scheduled task and kill the relay
+      # process so port 46995 doesn't leak across runs.
       # =========================================================================
-      - name: B4 - Tear down the relay service
+      - name: B4 - Tear down the relay task
         if: always()
         shell: pwsh
         run: |
-          $svc = Get-Service -Name 'MyLikitaRelay' -ErrorAction SilentlyContinue
-          if ($svc) {
-            Stop-Service -Name 'MyLikitaRelay' -Force -ErrorAction SilentlyContinue
-            sc.exe delete MyLikitaRelay 2>$null | Out-Null
-            Write-Output '[OK] MyLikitaRelay service stopped and deleted.'
-          } else {
-            Write-Output '[OK] MyLikitaRelay service not present (nothing to tear down).'
-          }
+          schtasks /delete /tn MyLikitaRelay /f 2>$null | Out-Null
+          # Also kill any lingering node process on port 46995
+          $p = Get-NetTCPConnection -LocalPort 46995 -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($p) { Stop-Process -Id $p.OwningProcess -Force -ErrorAction SilentlyContinue }
+          Write-Output '[OK] MyLikitaRelay task cleaned up.'
 
       # Always upload the install + backend logs so a failing install can be
       # debugged without re-running the whole job. upload-artifact@v4 needs
