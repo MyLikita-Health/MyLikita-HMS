@@ -867,9 +867,18 @@ jobs:
           $node = 'C:\MyLikita\runtime\node\node.exe'
           $outLog = 'C:\MyLikita\logs\relay-out.log'
           $errLog = 'C:\MyLikita\logs\relay-err.log'
-          $p = Start-Process -FilePath $node -ArgumentList 'app.js' -WorkingDirectory $relayDir `
-            -RedirectStandardOutput $outLog -RedirectStandardError $errLog -WindowStyle Hidden -PassThru
-          Write-Output "Relay started (PID $($p.Id)), waiting for /health..."
+          # The Windows runner terminates every child of a step (job object)
+          # when the step's shell exits, so Start-Process would die before the
+          # next step calls the relay. Spawn it detached via WMI instead - the
+          # process is created by the WMI service, outside the step's job
+          # object, and survives across steps. It inherits this step's env
+          # (RELAY_* vars above). stdout/stderr are redirected by cmd.
+          $cmdLine = "`"$node`" `"app.js`" >> `"$outLog`" 2>> `"$errLog`""
+          $wmi = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
+            CommandLine      = $cmdLine
+            CurrentDirectory = $relayDir
+          }
+          Write-Output "Relay started (PID $($wmi.ProcessId)), waiting for /health..."
 
           $deadline = (Get-Date).AddMinutes(2)
           $ok = $false
