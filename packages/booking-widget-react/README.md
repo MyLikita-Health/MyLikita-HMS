@@ -1,7 +1,10 @@
 # @mylikita/booking-widget-react
 
+**Live on npm:** [`@mylikita/booking-widget-react`](https://www.npmjs.com/package/@mylikita/booking-widget-react) ·
+[vanilla widget `@mylikita/booking-widget`](https://www.npmjs.com/package/@mylikita/booking-widget)
+
 React component wrapper around
-[`@mylikita/booking-widget`](/packages/booking-widget) — appointment booking
+[`@mylikita/booking-widget`](https://www.npmjs.com/package/@mylikita/booking-widget) — appointment booking
 for React hospital websites that syncs through the **MyLikita relay**. Agency
 sites built in React (Next.js, Vite, CRA, Gatsby…) can drop in a single
 component:
@@ -18,8 +21,9 @@ component:
 The component renders the vanilla widget's form, submits through
 `POST /v1/bookings`, and polls `GET /v1/bookings/:ref` until the hospital
 confirms, cancels, reschedules, no-shows, or the request expires. It implements
-the [MyLikita Website Booking API (v1)](/backend/WEBSITE_BOOKING_API.md)
-exactly — same auth, same fields, same idempotency, same statuses.
+the **MyLikita Website Booking API (v1)** exactly — same auth, same fields,
+same idempotency, same statuses — so the hospital side needs no custom
+integration work.
 
 ---
 
@@ -59,7 +63,8 @@ export default function BookAppointment() {
 ## Props
 
 All option props map 1:1 onto the vanilla widget's options (see the
-[vanilla README](/packages/booking-widget/README.md) for the full reference).
+[vanilla package README](https://www.npmjs.com/package/@mylikita/booking-widget)
+for the full reference).
 
 | Prop | Type | Default | Description |
 |---|---|---|---|
@@ -127,28 +132,13 @@ Every colour, radius and font is a CSS custom property scoped to
 />
 ```
 
-See the vanilla README for the full variable list.
+See the vanilla package README for the full variable list.
 
-## Demo
+## Support
 
-`dist/react-demo.html` runs the component **fully offline** against an in-page
-mock relay — react, react-dom and the widget are all inlined, so it works from
-`file://` with no server and no network. Build it with:
-
-```bash
-npm run build && npm run build:demo
-```
-
-## Development
-
-```bash
-npm run build   # esbuild → dist/ (esm + cjs; react & the widget stay external)
-npm test        # jsdom harness: mounts the component, exercises submit/poll/destroy/refs
-```
-
-`dist/` is committed so the package works before any install; rebuild after
-touching `src/`. The test resolves react/jsdom/esbuild from the monorepo's
-`frontend/node_modules` — no separate install needed.
+- **Issues:** report through your MyLikita account manager or the MyLikita
+  support channel you were onboarded with.
+- **The vanilla widget:** [`@mylikita/booking-widget`](https://www.npmjs.com/package/@mylikita/booking-widget).
 
 ## Security notes
 

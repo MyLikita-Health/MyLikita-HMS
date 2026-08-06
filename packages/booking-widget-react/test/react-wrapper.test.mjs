@@ -1,8 +1,9 @@
 /**
  * Test runner for @mylikita/booking-widget-react.
  *
- * No installs required: jsdom + esbuild + react + react-dom are resolved from
- * the monorepo's frontend/node_modules (the frontend app already installs them).
+ * No installs strictly required: jsdom + esbuild + react + react-dom are
+ * resolved from the package's own node_modules (what `npm ci` creates) first,
+ * falling back to the monorepo's frontend/node_modules for local dev.
  *
  *  1. Boot a jsdom window and copy the globals React needs.
  *  2. Bundle test/harness.jsx with esbuild — react/react-dom and the widget are

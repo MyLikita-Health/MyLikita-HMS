@@ -1,5 +1,9 @@
 # @mylikita/booking-widget
 
+**Live on npm:** [`@mylikita/booking-widget`](https://www.npmjs.com/package/@mylikita/booking-widget) ·
+[unpkg CDN](https://unpkg.com/@mylikita/booking-widget) ·
+[React wrapper `@mylikita/booking-widget-react`](https://www.npmjs.com/package/@mylikita/booking-widget-react)
+
 Drop-in appointment booking for hospital websites built on MyLikita. A
 zero-dependency vanilla-JS widget (no framework required) that:
 
@@ -8,8 +12,9 @@ zero-dependency vanilla-JS widget (no framework required) that:
 3. polls the booking (`GET /v1/bookings/:ref`) until the hospital confirms,
    cancels, reschedules, marks no-show, or the request expires.
 
-It implements the [MyLikita Website Booking API (v1)](/backend/WEBSITE_BOOKING_API.md)
-exactly — same auth, same fields, same idempotency rules, same statuses.
+It implements the **MyLikita Website Booking API (v1)** exactly — same auth,
+same fields, same idempotency rules, same statuses — so the hospital side
+needs no custom integration work.
 
 ---
 
@@ -40,7 +45,7 @@ import { createBookingWidget } from '@mylikita/booking-widget';
 createBookingWidget(document.getElementById('booking'), { relayUrl, websiteKey, facilityId });
 ```
 
-**React sites:** use [`@mylikita/booking-widget-react`](/packages/booking-widget-react) — the
+**React sites:** use [`@mylikita/booking-widget-react`](https://www.npmjs.com/package/@mylikita/booking-widget-react) — the
 same widget as a `<BookingWidget relayUrl=… websiteKey=… facilityId=… />`
 component (all options are props, SSR-safe, imperative ref).
 
@@ -52,7 +57,7 @@ component (all options are props, SSR-safe, imperative ref).
 | `websiteKey` | string | — | **required** — your public client id (Bearer on every request) |
 | `facilityId` | string | — | **required** — the hospital's public facility id |
 | `providers` | array | `[]` | `[{ external_id, label }]` — shown as a "Preferred doctor" select; unmapped slugs simply arrive unassigned (never block on them). When provided, it wins and no fetch happens |
-| `loadProviders` | bool | `false` | **Phase C2/C3** — fetch the facility's mapped providers from the relay (`GET /v1/providers`) on mount and populate the doctor dropdown automatically. Ignored when `providers` is non-empty. A fetch failure is non-fatal: the widget keeps "No preference" and still works |
+| `loadProviders` | bool | `false` | fetch the facility's mapped providers from the relay (`GET /v1/providers`) on mount and populate the doctor dropdown automatically. Ignored when `providers` is non-empty. A fetch failure is non-fatal: the widget keeps "No preference" and still works |
 | `services` | array | `[]` | `['General consultation', …]` — shown as a service select (free-text input otherwise) |
 | `durationMins` | number | `30` | sent with the booking |
 | `pollIntervalMs` | number | `5000` | how often to poll the booking status |
@@ -140,25 +145,11 @@ createBookingWidget(el, {
 });
 ```
 
-## Demo
+## Support
 
-`demo/demo.html` runs the widget **fully offline** against an in-page mock of
-the relay — submit a booking and watch it flip to *confirmed* after two polls.
-Open it in a browser directly:
-
-```bash
-open packages/booking-widget/demo/demo.html
-```
-
-## Development
-
-```bash
-npm run build   # esbuild → dist/ (iife, iife.min, esm, cjs)
-npm test        # mocked-fetch suite for the core logic
-```
-
-`dist/` is committed so the package works before any install; rebuild after
-touching `src/`.
+- **Issues:** report through your MyLikita account manager or the MyLikita
+  support channel you were onboarded with.
+- **The React wrapper:** [`@mylikita/booking-widget-react`](https://www.npmjs.com/package/@mylikita/booking-widget-react).
 
 ## Security notes
 
