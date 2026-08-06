@@ -572,11 +572,11 @@ jobs:
 
           # 1) The migration ran during install: the super_admin role exists and
           #    carries the Administrator's permissions (mirrored by the migration).
-          $roleCount = (& $mysql -u root "--password=$pw" "--port=$port" -N -s -e "SELECT COUNT(*) FROM roles WHERE code='super_admin'").Trim()
+          $roleCount = (& $mysql -u root "--password=$pw" "--port=$port" -N -s -e "SELECT COUNT(*) FROM roles WHERE code='super_admin'" $db).Trim()
           if ($roleCount -ne '1') { throw "super_admin role missing after install (count=$roleCount) - did db:migrate run?" }
           Write-Output '[OK] super_admin role exists (migration ran during install).'
 
-          $permCount = (& $mysql -u root "--password=$pw" "--port=$port" -N -s -e "SELECT COUNT(*) FROM role_permissions rp JOIN roles r ON rp.role_id=r.id WHERE r.code='super_admin'").Trim()
+          $permCount = (& $mysql -u root "--password=$pw" "--port=$port" -N -s -e "SELECT COUNT(*) FROM role_permissions rp JOIN roles r ON rp.role_id=r.id WHERE r.code='super_admin'" $db).Trim()
           if ([int]$permCount -le 0) { throw "super_admin role has no permissions (count=$permCount) - the permission mirror did not run." }
           Write-Output "[OK] super_admin role has $permCount permissions (mirrored from Administrator)."
 
@@ -591,7 +591,7 @@ jobs:
           # 2a) Pre-promote: privilege must NOT have bit 8 (keeps this test
           #     honest - fails loudly if the seed ever changes), and the API
           #     must reject them (403) on the super-admin-only registry.
-          $privBefore = (& $mysql -u root "--password=$pw" "--port=$port" -N -s -e "SELECT privilege FROM users WHERE username='$target'").Trim()
+          $privBefore = (& $mysql -u root "--password=$pw" "--port=$port" -N -s -e "SELECT privilege FROM users WHERE username='$target'" $db).Trim()
           if ($privBefore -eq '' -or $privBefore -eq $null) { throw "User '$target' not found in the seeded dump." }
           if (([int]$privBefore -band 8) -eq 8) { throw "$target already has the superAdmin bit (privilege=$privBefore) - the differential test would be vacuous." }
           Write-Output "[OK] $target starts at privilege $privBefore (no superAdmin bit)."
@@ -631,15 +631,15 @@ jobs:
           Write-Output '[OK] promote-super-admin CLI ran successfully on the installed server.'
 
           # 2c) Post-promote DB state: privilege bit 8, role slug, user_roles link.
-          $priv = (& $mysql -u root "--password=$pw" "--port=$port" -N -s -e "SELECT privilege FROM users WHERE username='$target'").Trim()
+          $priv = (& $mysql -u root "--password=$pw" "--port=$port" -N -s -e "SELECT privilege FROM users WHERE username='$target'" $db).Trim()
           if (([int]$priv -band 8) -ne 8) { throw "$target privilege after promote is $priv - bit 8 (superAdmin) not set." }
           Write-Output "[OK] $target privilege is now $priv (bit 8 set, was $privBefore)."
 
-          $role = (& $mysql -u root "--password=$pw" "--port=$port" -N -s -e "SELECT role FROM users WHERE username='$target'").Trim()
+          $role = (& $mysql -u root "--password=$pw" "--port=$port" -N -s -e "SELECT role FROM users WHERE username='$target'" $db).Trim()
           if ($role -ne 'super_admin') { throw "$target role after promote is '$role', expected 'super_admin'." }
           Write-Output "[OK] $target role is 'super_admin'."
 
-          $linkCount = (& $mysql -u root "--password=$pw" "--port=$port" -N -s -e "SELECT COUNT(*) FROM user_roles ur JOIN roles r ON ur.role_id=r.id JOIN users u ON ur.user_id=u.id WHERE r.code='super_admin' AND u.username='$target'").Trim()
+          $linkCount = (& $mysql -u root "--password=$pw" "--port=$port" -N -s -e "SELECT COUNT(*) FROM user_roles ur JOIN roles r ON ur.role_id=r.id JOIN users u ON ur.user_id=u.id WHERE r.code='super_admin' AND u.username='$target'" $db).Trim()
           if ($linkCount -ne '1') { throw "$target not linked to the super_admin role in user_roles (count=$linkCount)." }
           Write-Output "[OK] $target is linked to the super_admin role in user_roles."
 
@@ -737,7 +737,7 @@ jobs:
           $port  = if ($envMap['DB_PORT']) { $envMap['DB_PORT'] } else { '3306' }
 
           # Marker row must have survived the reinstall.
-          $marker = (& $mysql -u root "--password=$pw" "--port=$port" -N -s -e "SELECT note FROM reinstall_marker WHERE id=1").Trim()
+          $marker = (& $mysql -u root "--password=$pw" "--port=$port" -N -s -e "SELECT note FROM reinstall_marker WHERE id=1" $db).Trim()
           if ($marker -ne 'PHASE2_MARKER') { throw "Marker row missing after reinstall (got '$marker') - data was lost." }
           Write-Output '[OK] Marker row survived the reinstall.'
 
@@ -752,13 +752,13 @@ jobs:
 
           # The CLAIMED admin (the claim renamed the seeded 'admin' in place)
           # must still exist - proving the reinstall preserved post-claim data.
-          $users = (& $mysql -u root "--password=$pw" "--port=$port" -N -s -e "SELECT COUNT(*) FROM users WHERE username='ciadmin'").Trim()
+          $users = (& $mysql -u root "--password=$pw" "--port=$port" -N -s -e "SELECT COUNT(*) FROM users WHERE username='ciadmin'" $db).Trim()
           if ($users -ne '1') { throw "Claimed admin 'ciadmin' missing after reinstall (count=$users)." }
           Write-Output '[OK] Claimed admin ciadmin still present.'
 
           # The guarded postinstall UPDATE must NOT have reset the claimed
           # facility back to pending on reinstall (the claim survived).
-          $status = (& $mysql -u root "--password=$pw" "--port=$port" -N -s -e "SELECT onboarding_status FROM hospitals WHERE id='1be0a9da-bff9-4ab6-a36c-edfd8ca88f1a'").Trim()
+          $status = (& $mysql -u root "--password=$pw" "--port=$port" -N -s -e "SELECT onboarding_status FROM hospitals WHERE id='1be0a9da-bff9-4ab6-a36c-edfd8ca88f1a'" $db).Trim()
           if ($status -ne 'complete') { throw "Facility onboarding_status after reinstall is '$status', expected 'complete' - the guarded UPDATE reset it?" }
           Write-Output "[OK] Facility onboarding_status is still 'complete' after reinstall."
 
@@ -1026,7 +1026,7 @@ jobs:
 
           # The status writer must have enqueued a relay-outbox row (the row
           # is website-originated: external_ref set + relay configured).
-          $outboxCount = (& $mysql -u root "--password=$pw" "--port=$port" -N -s -e "SELECT COUNT(*) FROM appt_sync_outbox WHERE external_ref='$externalRef'").Trim()
+          $outboxCount = (& $mysql -u root "--password=$pw" "--port=$port" -N -s -e "SELECT COUNT(*) FROM appt_sync_outbox WHERE external_ref='$externalRef'" $db).Trim()
           if ($LASTEXITCODE -ne 0) { throw "MySQL query failed while checking appt_sync_outbox (exit $LASTEXITCODE)." }
           if ([int]$outboxCount -lt 1) { throw "No appt_sync_outbox row for external_ref=$externalRef (count=$outboxCount)." }
           Write-Output "[OK] appt_sync_outbox row written (count=$outboxCount)."
