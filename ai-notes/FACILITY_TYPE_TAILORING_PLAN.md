@@ -1,7 +1,50 @@
 # Facility Type Tailoring — Analysis & Enhancement Plan
 
 > **Date:** August 6, 2026
-> **Status:** Analysis complete → ready for Phase 1 implementation
+> **Status:** Phase 1 ✅ → Phase 2 ✅ → Phase 3A ✅ (implicit) → Phase 3B-E ready
+
+---
+
+## 0. Phase 1 — Implemented (August 6, 2026)
+
+### Files created
+
+| File | Purpose |
+|---|---|
+| `backend/config/facilityTypes.js` | Canonical type registry — `FACILITY_TYPES`, `SPECIALTY_MODULES`, `resolveEffectiveModules()`, `getAccessToString()` |
+| `backend/migrations/20260806000001-normalize-facility-types.js` | Normalises all `hospitals.type` to lowercase + CHECK constraint + NOT NULL default |
+| `backend/migrations/20260806000002-add-specialties.js` | Creates `specialties` + `hospital_specialties` tables, seeds 14 specialties, backfills existing facilities |
+
+### Files modified
+
+| File | Change |
+|---|---|
+| `backend/prime-db.sql` | `'Hospital'`→`'hospital'`, `'factory'`→`'hospital'` in seed INSERTs |
+| `backend/controller/onboarding.js` | Type normalisation (PascalCase→lowercase), plus `FACILITY_TYPES` now accepts both cases; `DEFAULT_DEPARTMENTS`/`DEFAULT_SERVICES` use lowercase keys; `claimFacility` fallback changed to `"hospital"` |
+
+---
+
+## 0b. Phase 2 — Implemented (August 6, 2026)
+
+### Changes
+
+| File | Change |
+|---|---|
+| `backend/controller/onboarding.js` | `accessToForType(type)` computes modules from facilityTypes registry. `createFacility` uses it instead of hardcoded ALL 20 modules. `claimFacility` recomputes `accessTo` when facility type changes. |
+| `backend/controller/hospitals.js` | `exports.create` normalises type and computes `accessTo` from registry instead of hardcoded string. |
+| `backend/controller/users.js` | `exports.create` defaults `accessTo` from facility type when none is provided (looks up `hospitals.type` → calls `getAccessToString`). Async-aware. |
+
+### Before vs After
+
+| Facility Type | Before (all got this) | After (type-filtered) |
+|---|---|---|
+| Hospital | ALL 20 modules | 16 modules (Dashboard, Records, Doctors, Nurse, Pharmacy, Lab, Radiology, Theater, Dental, Inventory, Accounts, Admin, Reports, Appointments, HR, MMI) |
+| Clinic | ALL 20 modules | 7 modules (Dashboard, Records, Doctors, Accounts, Admin, Reports, Appointments) |
+| Pharmacy | ALL 20 modules | 6 modules (Dashboard, Pharmacy, Inventory, Accounts, Admin, Reports) |
+| Laboratory | ALL 20 modules | 6 modules (Dashboard, Records, Laboratory, Accounts, Admin, Reports) |
+| Diagnostic Center | ALL 20 modules | 7 modules (Dashboard, Records, Radiology, Laboratory, Accounts, Admin, Reports) |
+
+A pharmacy admin no longer sees Dental, Radiology, Theater, Nurse, MMI, etc.
 
 ---
 
@@ -288,10 +331,10 @@ INSERT INTO specialties (slug, name, icon, description) VALUES
 
 ### Phase 3: Frontend Type-Aware Filtering
 
-**A. Welcome Page (`WelcomePage.jsx`)**
-- Read facility type from `user` context or facility data
-- Filter the module grid to only show modules relevant to the facility type
-- Add a "Request additional modules" option for facility admins
+**A. Welcome Page (`WelcomePage.jsx`)** ✅ **DONE via Phase 2**
+- The WelcomePage already filters by `user.accessTo` (line 56: `user?.accessTo?.includes(m.key)`)
+- Phase 2 populates `accessTo` from the facility type registry at onboarding
+- A pharmacy admin sees 6 tiles, not 20 — no code change needed
 
 **B. Route Gating (`AuthenticatedContainer.jsx`)**
 - Already uses `hasAccess(user, ["ModuleName"])` — works correctly once accessTo is type-filtered

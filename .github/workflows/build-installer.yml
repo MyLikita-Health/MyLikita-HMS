@@ -654,6 +654,75 @@ jobs:
           Write-Output "[OK] Promoted super admin can list facilities (GET /hospitals returned $n)."
 
       # =========================================================================
+      # SPECIALTIES SYSTEM (Phase 1C migration + Phase 2 endpoints)
+      # The installer must ship the specialties migration (20260806000002)
+      # and run it during install. Assert the tables exist, the seed data is
+      # correct, and the super-admin GET/PUT endpoints work end-to-end.
+      # =========================================================================
+      - name: Verify specialties system (tables, seed, and API)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          function Read-Env($path) {
+            $h = @{}
+            Get-Content $path | ForEach-Object {
+              if ($_ -match '^\s*([A-Za-z0-9_]+)=(.*)$') { $h[$matches[1]] = $matches[2].Trim() }
+            }
+            return $h
+          }
+          $envMap = Read-Env 'C:\MyLikita\backend\.env'
+          $mysql = 'C:\MyLikita\runtime\mysql\bin\mysql.exe'
+          $db    = $envMap['DB_NAME']
+          $pw    = $envMap['DB_PASSWORD']
+          $port  = if ($envMap['DB_PORT']) { $envMap['DB_PORT'] } else { '3306' }
+
+          # ── 1. specialties table exists and has exactly 14 rows ──────────
+          $specCount = (& $mysql -u root "--password=$pw" "--port=$port" -N -s -e "SELECT COUNT(*) FROM specialties" $db).Trim()
+          if ($specCount -ne '14') { throw "specialties table has $specCount rows, expected 14 — did the migration run?" }
+          Write-Output "[OK] specialties table: $specCount rows (14 core specialties seeded)."
+
+          # ── 2. hospital_specialties has the dental backfill for Amisal ───
+          $dentalId = (& $mysql -u root "--password=$pw" "--port=$port" -N -s -e "SELECT id FROM specialties WHERE slug='dental'" $db).Trim()
+          if (-not $dentalId) { throw 'dental specialty not found in specialties table.' }
+          $facId = '1be0a9da-bff9-4ab6-a36c-edfd8ca88f1a'  # Amisal Dental Care (seeded)
+          $hsCount = (& $mysql -u root "--password=$pw" "--port=$port" -N -s -e "SELECT COUNT(*) FROM hospital_specialties WHERE facility_id='$facId' AND specialty_id=$dentalId" $db).Trim()
+          if ($hsCount -ne '1') { throw "Amisal Dental Care (clinic) backfill failed — expected 1 dental row in hospital_specialties, got $hsCount." }
+          Write-Output '[OK] Amisal Dental Care (clinic) backfilled with dental specialty.'
+
+          # ── 3. API: GET /facilities/:id/specialties (super-admin only) ────
+          # Use the promoted super admin 'admin_user' from the previous step.
+          $loginBody = @{ username = 'admin_user'; password = '123456' } | ConvertTo-Json
+          $login = Invoke-RestMethod -Uri 'http://localhost:46990/auth/login' -Method Post -ContentType 'application/json' -Body $loginBody -TimeoutSec 30
+          if (-not $login.success) { throw 'Login as super admin failed for specialties test.' }
+          $hdr = @{ Authorization = "Bearer $($login.token.Substring(7))" }
+
+          $specResp = Invoke-RestMethod -Uri "http://localhost:46990/facilities/$facId/specialties" -Headers $hdr -TimeoutSec 20
+          if (-not $specResp.success) { throw "GET /facilities/:id/specialties failed: $($specResp.error)" }
+          if ($specResp.available.Count -lt 14) { throw "GET specialties: available count ($($specResp.available.Count)) < 14." }
+          if ($specResp.assigned.Count -lt 1) { throw 'GET specialties: no assigned specialties for the seeded clinic.' }
+          $assignedSlugs = $specResp.assigned | ForEach-Object { $_.slug }
+          if ('dental' -notin $assignedSlugs) { throw "GET specialties: dental not in assigned list ($assignedSlugs)." }
+          Write-Output "[OK] GET /facilities/:id/specialties: $($specResp.available.Count) available, assigned: $assignedSlugs"
+
+          # ── 4. API: PUT /facilities/:id/specialties (add + remove) ───────
+          # Add radiology_diagnostic (idempotent), verify it shows up.
+          $addBody = @{ add = @('radiology_diagnostic') } | ConvertTo-Json
+          $putResp = Invoke-RestMethod -Uri "http://localhost:46990/facilities/$facId/specialties" -Method Put -ContentType 'application/json' -Headers $hdr -Body $addBody -TimeoutSec 20
+          if (-not $putResp.success) { throw "PUT specialties (add) failed: $($putResp.error)" }
+          $newSlugs = $putResp.assigned | ForEach-Object { $_.slug }
+          if ('radiology_diagnostic' -notin $newSlugs) { throw "PUT specialties: radiology_diagnostic not added ($newSlugs)." }
+          Write-Output "[OK] PUT added radiology_diagnostic — assigned now: $newSlugs"
+
+          # Remove it (cleanup so the DB stays in its original state).
+          $rmBody = @{ remove = @('radiology_diagnostic') } | ConvertTo-Json
+          $rmResp = Invoke-RestMethod -Uri "http://localhost:46990/facilities/$facId/specialties" -Method Put -ContentType 'application/json' -Headers $hdr -Body $rmBody -TimeoutSec 20
+          if (-not $rmResp.success) { throw "PUT specialties (remove) failed: $($rmResp.error)" }
+          $finalSlugs = $rmResp.assigned | ForEach-Object { $_.slug }
+          if ('radiology_diagnostic' -in $finalSlugs) { throw 'PUT specialties: radiology_diagnostic not removed.' }
+          Write-Output "[OK] PUT removed radiology_diagnostic — assigned back to: $finalSlugs"
+
+      # =========================================================================
       # PHASE 2 - REINSTALL TEST
       # Run the installer a second time over the same install and verify the
       # database survives: no re-import (install.log shows the skip message),
