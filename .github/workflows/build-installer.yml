@@ -873,7 +873,8 @@ jobs:
             "RELAY_SUPER_ADMIN_KEY=$opKey",
             'RELAY_WEBHOOK_TIMEOUT_MS=3000',
             'RELAY_TTL_HOURS=72',
-            'RELAY_RETENTION_DAYS=14'
+            'RELAY_RETENTION_DAYS=14',
+            'RELAY_LOG_FEED=1'
           )
           Set-Content -Path (Join-Path $relayDir '.env') -Value $envLines -Encoding ASCII
           Write-Output '[OK] Wrote relay .env with RELAY_* config.'
