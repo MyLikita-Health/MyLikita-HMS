@@ -1,0 +1,171 @@
+name: Nightly Installer Build
+
+# Nightly build of the self-contained MyLikita-Setup.exe from the default
+# branch. Posts a draft GitHub Release tagged `nightly` so clients always
+# have access to the latest build without waiting for a versioned release.
+#
+# This is intentionally LIGHTWEIGHT: it builds the .exe and publishes it ―
+# no smoke-test, no install-test, no B4 relay. Those gates belong on tagged
+# releases (build-installer.yml). The nightly build is a convenience so the
+# team and early-adopter clients can grab a fresh installer every morning.
+#
+# Trigger:
+#   ─ 04:00 UTC daily (off the peak hour)
+#   ─ Manually from the Actions tab (workflow_dispatch)
+#
+# What it does each run:
+#   1. Builds MyLikita-Setup-<date>.exe from the default branch
+#   2. Deletes the previous `nightly` tag + release (if they exist)
+#   3. Force-pushes a new `nightly` tag to the current HEAD
+#   4. Creates a DRAFT release for `nightly` with the .exe attached
+#   5. The release stays as draft so it never triggers downstream pipelines
+
+on:
+  schedule:
+    # 04:00 UTC daily — after prewarm-cache (03:17) so runtimes are warm
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write   # force-push tag, create release, upload asset
+
+jobs:
+  build-and-publish:
+    name: Build + publish nightly draft release
+    runs-on: windows-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+          token: ${{ secrets.MYLIKITA_PAT }}
+
+      # ---- Runtime cache (same key as build-installer.yml and prewarm-cache) ----
+      - name: Restore runtime cache
+        uses: actions/cache@v4
+        with:
+          path: deploy/windows-installer/dist/cache
+          key: mylikita-runtime-${{ vars.MYLIKITA_NODE_VERSION || 'v20.19.0' }}-${{ vars.MYLIKITA_MYSQL_VERSION || '8.0.42' }}-${{ hashFiles('deploy/windows-installer/build-installer.bat') }}
+
+      # ---- Inno Setup 6 (same pinned release as build-installer.yml) ----
+      - name: Install Inno Setup 6
+        shell: pwsh
+        env:
+          INNO_SETUP_VER: 6.7.3
+        run: |
+          $ProgressPreference = 'SilentlyContinue'
+          $url = "https://github.com/jrsoftware/issrc/releases/download/is-$($env:INNO_SETUP_VER -replace '\.', '_')/innosetup-$env:INNO_SETUP_VER.exe"
+          Invoke-WebRequest -Uri $url -OutFile "$env:TEMP\innosetup.exe" -UseBasicParsing
+          $p = Start-Process -FilePath "$env:TEMP\innosetup.exe" -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Inno Setup installer failed (exit $($p.ExitCode))." }
+          $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $iscc)) { throw "ISCC.exe not found at $iscc" }
+          Write-Output "Inno Setup $env:INNO_SETUP_VER installed: $iscc"
+
+      # ---- Build the installer (date-based version so file names never collide) ----
+      - name: Build installer
+        id: build
+        shell: pwsh
+        run: |
+          $dateVer = (Get-Date).ToString('yyyyMMdd')
+          Write-Output "Nightly version: $dateVer"
+          # MYLIKITA_VERSION overrides the default 1.0.0 inside build-installer.bat
+          $env:MYLIKITA_VERSION = "nightly-$dateVer"
+          cmd /c deploy\windows-installer\build-installer.bat
+          $exe = Get-ChildItem 'deploy\windows-installer\dist\output' -Filter *.exe | Select-Object -First 1
+          if (-not $exe) { throw 'No .exe produced by the build.' }
+          $sizeMB = [math]::Round($exe.Length / 1MB)
+          Write-Output "Built: $($exe.Name) ($sizeMB MB)"
+          # Size sanity check: the embedded runtimes alone are > 100 MB
+          if ($exe.Length -lt 100MB) { throw "Installer is only $sizeMB MB - runtimes missing?" }
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "VERSION=$dateVer"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "EXE_NAME=$($exe.Name)"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "EXE_PATH=$($exe.FullName)"
+
+      # ---- Git config (needed for the tag push) ----
+      - name: Configure git
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      # ---- Delete the previous `nightly` tag + release so the new one is clean ----
+      - name: Clean up previous nightly tag and release
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          # Delete the local + remote tag if it exists (best-effort on 404)
+          git tag -d nightly 2>$null
+          git push origin :refs/tags/nightly 2>$null
+          Write-Output '[OK] Old nightly tag cleaned up (if it existed).'
+
+          # Delete any existing GitHub Release for the `nightly` tag.
+          # If no release exists, the API returns 404 ― treat that as success.
+          $repo = "${{ github.repository }}"
+          $pat = "${{ secrets.GITHUB_TOKEN }}"   # job token, not MYLIKITA_PAT
+          try {
+            $rel = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases/tags/nightly" `
+                   -Headers @{ Authorization = "Bearer $pat"; Accept = 'application/vnd.github+json'; UserAgent = 'Freebuff' } `
+                   -TimeoutSec 20
+            Invoke-RestMethod -Uri $rel.url `
+                 -Method Delete -Headers @{ Authorization = "Bearer $pat"; Accept = 'application/vnd.github+json'; UserAgent = 'Freebuff' } `
+                 -TimeoutSec 20
+            Write-Output '[OK] Deleted previous nightly release.'
+          } catch {
+            if ($_.Exception.Response.StatusCode -eq 404) {
+              Write-Output '[OK] No previous nightly release to delete.'
+            } else {
+              throw "Failed to clean up nightly release: $($_.Exception.Message)"
+            }
+          }
+
+      # ---- Tag the current HEAD as `nightly` ----
+      - name: Create and push nightly tag
+        shell: bash
+        run: |
+          git tag -f nightly "${{ github.sha }}"
+          git push -f origin refs/tags/nightly
+          echo '[OK] Tag nightly pushed at' $(git rev-parse nightly)
+
+      # ---- Create a DRAFT GitHub Release for the `nightly` tag ----
+      - name: Create draft release
+        id: release
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $repo = "${{ github.repository }}"
+          $pat = "${{ secrets.GITHUB_TOKEN }}"
+          $body = @{
+            tag_name         = 'nightly'
+            name             = "Nightly build — ${{ steps.build.outputs.VERSION }}"
+            body             = "Automated nightly build from `${{ github.ref_name }}` at ${{ github.sha }}.\n\nBuilt: ${{ steps.build.outputs.VERSION }}\n\n> This is a **draft** release. It is automatically rebuilt every night. Download the latest `MyLikita-Setup-*.exe` below."
+            draft            = $true
+            prerelease       = $true
+            generate_release_notes = $false
+          } | ConvertTo-Json -Depth 4
+          $resp = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases" `
+                 -Method Post -Headers @{ Authorization = "Bearer $pat"; Accept = 'application/vnd.github+json'; UserAgent = 'Freebuff'; 'Content-Type' = 'application/json' } `
+                 -Body $body -TimeoutSec 30
+          Write-Output "Draft release created: $($resp.html_url)"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "UPLOAD_URL=$($resp.upload_url)" -NoNewline
+
+      # ---- Upload the .exe to the draft release ----
+      - name: Upload installer to release
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $uploadUrl = "${{ steps.release.outputs.UPLOAD_URL }}"
+          # Strip the {?name,label} template suffix
+          $uploadUrl = $uploadUrl -replace '\{.*\}', ''
+          $exePath = "${{ steps.build.outputs.EXE_PATH }}"
+          $exeName = "${{ steps.build.outputs.EXE_NAME }}"
+          $pat = "${{ secrets.GITHUB_TOKEN }}"
+          Write-Output "Uploading $exeName..."
+          Invoke-RestMethod -Uri "$uploadUrl?name=$([uri]::EscapeDataString($exeName))" `
+                 -Method Post -Headers @{ Authorization = "Bearer $pat"; Accept = 'application/vnd.github+json'; UserAgent = 'Freebuff'; 'Content-Type' = 'application/octet-stream' } `
+                 -InFile $exePath -TimeoutSec 600
+          Write-Output "[OK] $exeName uploaded to the nightly draft release."

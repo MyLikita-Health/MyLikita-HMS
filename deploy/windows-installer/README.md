@@ -3,9 +3,10 @@
 > **End-user documentation:** give the client
 > [`OFFLINE_INSTALLATION_GUIDE.md`](./OFFLINE_INSTALLATION_GUIDE.md) — a
 > step-by-step, non-technical guide to installing and running MyLikita on
-> their Windows server. For a condensed one-pager, print
-> [`QUICK_START_CARD.html`](./QUICK_START_CARD.html) (browser → Print → PDF) or
-> hand over [`QUICK_START_CARD.md`](./QUICK_START_CARD.md).
+> their Windows server. For clients who want a printable tick-list, hand over
+> [`DEPLOYMENT_CHECKLIST.md`](./DEPLOYMENT_CHECKLIST.md). For a condensed
+> one-pager, print [`QUICK_START_CARD.html`](./QUICK_START_CARD.html) (browser
+> → Print → PDF) or hand over [`QUICK_START_CARD.md`](./QUICK_START_CARD.md).
 > This README is the developer's build/support doc.
 
 Produces a **single `.exe`** the client downloads, double-clicks, and is done.

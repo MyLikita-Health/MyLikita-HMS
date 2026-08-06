@@ -816,10 +816,13 @@ jobs:
       #   relay_in_master (website books) -> relaySync pull -> appt_master
       #   (source='website', external_ref) -> hub status change -> appt_sync_outbox
       #   -> relay_out_master -> website poll sees 'confirmed'.
-      # The relay runs as a plain background node process (NOT a service) using
-      # the app's own bundled node_modules (NODE_PATH) - no npm install, no
-      # separate runner. Runs AFTER phase 2 so the .env edit + service restart
-      # here disturb nothing else.
+      # The relay is registered as a temporary Windows service (sc create) so
+      # it survives across job steps — the WMI Win32_Process.Create approach
+      # spawned the process but (a) it runs under SYSTEM with no access to
+      # PowerShell's $env: vars (the RELAY_* config is never inherited), and
+      # (b) GitHub's runner terminates every child of a step's job object.
+      # A service runs as SYSTEM, fully detached, and reads its config from a
+      # .env file written by this step (the relay already loads dotenv).
       # =========================================================================
       - name: B4 - Boot the cloud relay against the installed MySQL
         shell: pwsh
@@ -842,43 +845,71 @@ jobs:
           $opKey = "opkey_$([guid]::NewGuid().ToString('N'))"
           Set-Content -Path (Join-Path $env:TEMP 'relay-opkey.txt') -Value $opKey
 
-          $env:RELAY_PORT = '46995'
-          # Same host the app itself uses (mirrors the app's connection so the
-          # relay lands on the exact same root@localhost account).
-          $env:RELAY_DB_HOST = $dbHost
-          $env:RELAY_DB_PORT = $dbPort
-          $env:RELAY_DB_USER = 'root'
-          $env:RELAY_DB_PASSWORD = $pw
-          $env:RELAY_DB_NAME = 'mylikita_relay'
-          $env:RELAY_SUPER_ADMIN_KEY = $opKey
-          $env:RELAY_WEBHOOK_TIMEOUT_MS = '3000'
-          $env:RELAY_TTL_HOURS = '72'
-          $env:RELAY_RETENTION_DAYS = '14'
-          # Resolve the relay's deps from the INSTALLED app bundle - every
-          # package the relay requires ships with the app (verified in the
-          # smoke test), so no npm ci on the runner. Minor version drift is
-          # deliberate and benign today (e.g. relay wants node-cron ^3, the
-          # app bundles ^4 - cron.schedule's API is unchanged): if a future
-          # bump breaks the relay, pin the app's version up instead.
-          $env:NODE_PATH = 'C:\MyLikita\backend\node_modules'
-
           $relayDir = Join-Path $env:GITHUB_WORKSPACE 'backend\relay'
           if (-not (Test-Path (Join-Path $relayDir 'app.js'))) { throw "Relay source not found at $relayDir - checkout missing?" }
           $node = 'C:\MyLikita\runtime\node\node.exe'
           $outLog = 'C:\MyLikita\logs\relay-out.log'
           $errLog = 'C:\MyLikita\logs\relay-err.log'
-          # The Windows runner terminates every child of a step (job object)
-          # when the step's shell exits, so Start-Process would die before the
-          # next step calls the relay. Spawn it detached via WMI instead - the
-          # process is created by the WMI service, outside the step's job
-          # object, and survives across steps. It inherits this step's env
-          # (RELAY_* vars above). stdout/stderr are redirected by cmd.
-          $cmdLine = "`"$node`" `"app.js`" >> `"$outLog`" 2>> `"$errLog`""
-          $wmi = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
-            CommandLine      = $cmdLine
-            CurrentDirectory = $relayDir
+
+          # === Why a Windows service, not WMI ===
+          # WMI Win32_Process.Create spawns the process under the WMI service
+          # (SYSTEM), which does NOT inherit PowerShell's process environment
+          # ($env:RELAY_*). The relay starts with no config, can't connect to
+          # MySQL, and crashes before it ever opens port 46995. Even if env
+          # vars were solved, the GitHub runner terminates every child in the
+          # step's job object when the step ends, so no process survives.
+          #
+          # Fix: write a .env file (the relay's config.js already loads
+          # dotenv from __dirname/.env), then register it as a temporary
+          # Windows service. Services run fully detached from the runner's
+          # job objects and survive across all subsequent steps.
+          $envLines = @(
+            "RELAY_PORT=46995",
+            "RELAY_DB_HOST=$dbHost",
+            "RELAY_DB_PORT=$dbPort",
+            'RELAY_DB_USER=root',
+            "RELAY_DB_PASSWORD=$pw",
+            'RELAY_DB_NAME=mylikita_relay',
+            "RELAY_SUPER_ADMIN_KEY=$opKey",
+            'RELAY_WEBHOOK_TIMEOUT_MS=3000',
+            'RELAY_TTL_HOURS=72',
+            'RELAY_RETENTION_DAYS=14'
+          )
+          Set-Content -Path (Join-Path $relayDir '.env') -Value $envLines -Encoding ASCII
+          Write-Output '[OK] Wrote relay .env with RELAY_* config.'
+
+          # The relay resolves dependencies from the INSTALLED app's
+          # node_modules. NODE_PATH must be set before Node starts (it reads
+          # the env before dotenv loads the .env file written above).
+          #
+          # Windows services misread the registry's MultiString Environment
+          # value under some conditions (SYSTEM account encoding), so instead
+          # of relying on the registry we write a small .cmd wrapper that sets
+          # NODE_PATH and launches node — a single, self-contained shell that
+          # the service manager can invoke reliably.
+          #
+          # Write .env here too so the diagnostics can see the full config
+          # (the .cmd doesn't need to set RELAY_* vars — the relay's
+          # config.js loads them from __dirname/.env via dotenv).
+          $cmdPath = Join-Path $relayDir 'run-relay.cmd'
+          Set-Content -Path $cmdPath -Value @(
+            '@echo off',
+            "set NODE_PATH=C:\MyLikita\backend\node_modules",
+            "`"$node`" `"$relayDir\app.js`" >> `"$outLog`" 2>> `"$errLog`""
+          ) -Encoding ASCII
+          Write-Output '[OK] Wrote run-relay.cmd wrapper.'
+
+          sc.exe create MyLikitaRelay binPath= "cmd.exe /c `"$cmdPath`"" start= auto 2>$null | Out-Null
+          if ($LASTEXITCODE -ne 0) {
+            $err = sc.exe create MyLikitaRelay binPath= "cmd.exe /c `"$cmdPath`"" start= auto 2>&1
+            throw "sc create MyLikitaRelay failed: $err"
           }
-          Write-Output "Relay started (PID $($wmi.ProcessId)), waiting for /health..."
+          # Set a human-readable description (optional, helps in services.msc).
+          New-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\MyLikitaRelay' -Name Description -Value 'MyLikita relay (CI install-test)' -PropertyType String -Force | Out-Null
+          Write-Output '[OK] Registered MyLikitaRelay service.'
+
+          # Start the service and wait for /health.
+          Start-Service -Name 'MyLikitaRelay' -ErrorAction Stop
 
           $deadline = (Get-Date).AddMinutes(2)
           $ok = $false
@@ -1197,6 +1228,25 @@ jobs:
           $dumpBText = Get-Content $dumpB -Raw
           if ($dumpBText -notmatch 'data-ci-result="confirmed"') { throw "Widget poll did not reach confirmed:`n$($dumpBText.Substring(0, [Math]::Min(3000, $dumpBText.Length)))" }
           Write-Output '[OK] Phase B - widget polled the relay to confirmed. Full widget loop verified.'
+
+      # =========================================================================
+      # B4 CLEANUP — stop and delete the temporary relay service so it doesn't
+      # leak across install-test runs on the same runner (unlikely, but clean).
+      # Runs with if: always() so it tears down even when a B4 step failed,
+      # preventing a ghost service from occupying port 46995 on the next run.
+      # =========================================================================
+      - name: B4 - Tear down the relay service
+        if: always()
+        shell: pwsh
+        run: |
+          $svc = Get-Service -Name 'MyLikitaRelay' -ErrorAction SilentlyContinue
+          if ($svc) {
+            Stop-Service -Name 'MyLikitaRelay' -Force -ErrorAction SilentlyContinue
+            sc.exe delete MyLikitaRelay 2>$null | Out-Null
+            Write-Output '[OK] MyLikitaRelay service stopped and deleted.'
+          } else {
+            Write-Output '[OK] MyLikitaRelay service not present (nothing to tear down).'
+          }
 
       # Always upload the install + backend logs so a failing install can be
       # debugged without re-running the whole job. upload-artifact@v4 needs
