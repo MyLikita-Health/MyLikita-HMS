@@ -527,7 +527,9 @@ jobs:
           # The old default credentials must now be rejected (the claim
           # replaced them) - a negative assertion that the claim really took.
           # Only an AUTH-shaped failure counts as 'rejected'. A 429 (login is
-          # rate-limited) or a 5xx would otherwise be a false pass.
+          # rate-limited) or a 5xx would otherwise be a false pass. 404 counts:
+          # the claim renames the user, so the old username no longer exists
+          # and login answers 'User not found' (404) - a valid rejection.
           $rejected = $false
           try {
             $old = @{ username = 'admin'; password = '123456' } | ConvertTo-Json
@@ -536,7 +538,7 @@ jobs:
           } catch {
             $code = 0
             if ($_.Exception.Response -and $_.Exception.Response.StatusCode) { $code = [int]$_.Exception.Response.StatusCode }
-            if (@(400, 401, 403) -contains $code) { $rejected = $true }
+            if (@(400, 401, 403, 404) -contains $code) { $rejected = $true }
             else { throw "Unexpected status $code while checking old credentials: $($_.Exception.Message)" }
           }
           if (-not $rejected) { throw 'Old default admin admin/123456 still logs in after the claim.' }
