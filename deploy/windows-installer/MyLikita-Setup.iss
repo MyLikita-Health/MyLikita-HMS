@@ -44,9 +44,22 @@ RestartApplications=no
 ; 46990 is the default app port the firewall rule opens; the post-install
 ; script may pick another port if 46990 is taken, and it opens its own rule.
 AppComments=MyLikita hospital management system - offline deployment
+SetupIconFile=mylikita.ico
+UninstallDisplayIcon={app}\frontend\dist\icons\favicon.ico
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
+
+[Icons]
+; Desktop shortcut - opens MyLikita in a standalone app-style window
+; (Edge/Chrome --app= mode) via the launcher, falling back to the default
+; browser. Users never have to type or memorize http://localhost:46990/.
+Name: "{autodesktop}\MyLikita Hospital System"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\scripts\launch-app.vbs"""; WorkingDir: "{app}"; IconFilename: "{app}\frontend\dist\icons\favicon.ico"; Comment: "Open MyLikita"
+
+; Start Menu shortcuts
+Name: "{autoprograms}\MyLikita Hospital System\MyLikita Hospital System"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\scripts\launch-app.vbs"""; WorkingDir: "{app}"; IconFilename: "{app}\frontend\dist\icons\favicon.ico"; Comment: "Open MyLikita in an app window"
+Name: "{autoprograms}\MyLikita Hospital System\Open in Browser"; Filename: "http://localhost:46990/"; IconFilename: "{app}\frontend\dist\icons\favicon.ico"; Comment: "Open MyLikita in your default browser"
+Name: "{autoprograms}\MyLikita Hospital System\Uninstall MyLikita"; Filename: "{uninstallexe}"; IconFilename: "{app}\frontend\dist\icons\favicon.ico"
 
 [Files]
 ; Backend (includes prebuilt node_modules). Excluded: uploads (runtime data),

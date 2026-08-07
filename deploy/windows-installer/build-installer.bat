@@ -187,6 +187,22 @@ if errorlevel 1 (
 if defined SAVED_ENV_PROD copy /y "%CACHE%\env.production.saved" ".env.production" >nul
 popd
 
+rem ------------------------------------------- validate the built bundles ---
+rem The v0.1.0 release shipped a bundle with an invalid regex that V8 rejects
+rem at parse time ("Range out of order in character class") - the whole app
+rem crashed on load with a blank page. esbuild's minifier doesn't catch it;
+rem this guard parses every emitted .js with acorn and fails the build if any
+rem bundle is unparseable, so it can never ship again.
+echo.
+echo  Validating frontend bundles parse (acorn syntax guard)...
+"%RUNTIME%\node\node.exe" "%HERE%scripts\check-bundles.js" "%ROOT%\frontend\dist" "%ROOT%\frontend\node_modules"
+if errorlevel 1 (
+    echo  [ERROR] Frontend bundle syntax validation FAILED.
+    echo          A bundle would crash the app on load - see messages above.
+    exit /b 1
+)
+echo  [OK] All frontend bundles parse cleanly.
+
 if not exist "%DIST%\frontend\dist" mkdir "%DIST%\frontend\dist"
 xcopy /e /i /y /q "%ROOT%\frontend\dist\*" "%DIST%\frontend\dist\" >nul
 echo  [OK] Frontend build copied.
@@ -220,8 +236,25 @@ echo  [OK] Backend + node_modules bundled.
 if not exist "%DIST%\database" mkdir "%DIST%\database"
 copy /y "%ROOT%\backend\prime-db.sql" "%DIST%\database\prime-db.sql" >nul
 
+rem ------------------------------------------------------ installer icon ----
+rem The Inno script's SetupIconFile + shortcut icons come from the app favicon
+rem (committed at frontend\public\icons\favicon.ico and copied to dist by Vite).
+rem If it is ever missing the build MUST fail loudly - the .iss references
+rem SetupIconFile=mylikita.ico unconditionally, so a silent "fallback" would
+rem just produce a confusing ISCC compile error later.
+if not exist "%DIST%\frontend\dist\icons\favicon.ico" (
+    echo  [ERROR] frontend favicon.ico not found - the installer needs it for
+    echo          SetupIconFile and the desktop/Start Menu shortcut icons.
+    echo          Expected at: %DIST%\frontend\dist\icons\favicon.ico
+    exit /b 1
+)
+copy /y "%DIST%\frontend\dist\icons\favicon.ico" "%DIST%\mylikita.ico" >nul
+echo  [OK] Installer icon: mylikita.ico
+
 if not exist "%DIST%\scripts" mkdir "%DIST%\scripts"
 copy /y "%HERE%scripts\*.cmd" "%DIST%\scripts\" >nul
+copy /y "%HERE%scripts\check-bundles.js" "%DIST%\scripts\" >nul
+copy /y "%HERE%scripts\launch-app.vbs" "%DIST%\scripts\" >nul 2>nul
 
 copy /y "%HERE%MyLikita-Setup.iss" "%DIST%\MyLikita-Setup.iss" >nul
 

@@ -357,6 +357,10 @@ rem ===================================================== CREDENTIALS =========
 (
     echo MyLikita is installed and running.
     echo.
+    echo To open the app: double-click the ^"MyLikita Hospital System^" icon on
+    echo your Desktop ^(or Start Menu^). It opens in a clean app window - no
+    echo need to type the address.
+    echo.
     echo Access from this machine : http://localhost:!APP_PORT!/
     echo Access from the network   : http://!SERVER_IP!:!APP_PORT!/
     echo.
