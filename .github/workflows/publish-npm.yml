@@ -70,6 +70,25 @@ jobs:
         working-directory: packages/booking-widget
         run: npm run build && npm test
 
+      # Guard against the silent-noop footgun: the publish step below is
+      # idempotent (an already-published version is treated as success), so a
+      # tag pushed without bumping package.json would "succeed" without
+      # publishing anything, then the CDN check would 404 on the tag version
+      # (v0.1.1 tag with a 0.1.0 package). Fail fast with a clear message
+      # instead — npm refuses to republish an existing version, so the fix is
+      # always: bump package.json to the tag version, then re-tag.
+      - name: Assert package version matches the tag
+        if: ${{ github.event_name == 'push' }}
+        shell: bash
+        run: |
+          pkg_ver="$(node -p "require('./package.json').version")"
+          tag_ver="${GITHUB_REF_NAME#v}"
+          if [ "$pkg_ver" != "$tag_ver" ]; then
+            echo "[FAIL] package.json version ($pkg_ver) does not match tag v$tag_ver. Bump the package version to $tag_ver and re-tag (npm refuses to republish an existing version)."
+            exit 1
+          fi
+          echo "[OK] package version $pkg_ver matches tag v$tag_ver"
+
       - name: Publish to npm
         working-directory: packages/booking-widget
         if: ${{ github.event.inputs.dry-run != 'true' }}
@@ -150,6 +169,20 @@ jobs:
       - name: Build + test (prepublishOnly equivalent)
         working-directory: packages/booking-widget-react
         run: npm run build && npm test
+
+      # Same guard as the widget job: a tag without a matching package.json
+      # bump would no-op the idempotent publish and 404 on the CDN check.
+      - name: Assert package version matches the tag
+        if: ${{ github.event_name == 'push' }}
+        shell: bash
+        run: |
+          pkg_ver="$(node -p "require('./package.json').version")"
+          tag_ver="${GITHUB_REF_NAME#v}"
+          if [ "$pkg_ver" != "$tag_ver" ]; then
+            echo "[FAIL] package.json version ($pkg_ver) does not match tag v$tag_ver. Bump the package version to $tag_ver and re-tag (npm refuses to republish an existing version)."
+            exit 1
+          fi
+          echo "[OK] package version $pkg_ver matches tag v$tag_ver"
 
       - name: Publish to npm
         working-directory: packages/booking-widget-react
