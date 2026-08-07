@@ -183,6 +183,70 @@ jobs:
           if ($failed) { throw 'Smoke test FAILED - see [MISSING] items above.' }
           Write-Output 'SMOKE TEST PASSED'
 
+      # =========================================================================
+      # BUNDLE DRIFT TEST - the widget bundle shipped in the installer must be
+      # byte-for-byte the bundle published to the npm registry. The installer
+      # copies packages/booking-widget/dist at build time; npm publish pushes
+      # the same source. If the two ever drift (a stale dist committed to the
+      # repo, or a version bumped on one side only), the offline install and
+      # the CDN/npm version would behave differently for the same embed
+      # snippet - a hard-to-diagnose production bug. The manifest records the
+      # installer's widget sha256 (widget_sha256); this step downloads the
+      # published tarball for the SAME version from the registry, hashes its
+      # min bundle, and diffs the two.
+      # =========================================================================
+      - name: Verify widget bundle matches the published npm package (drift check)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $manifestFile = Get-ChildItem 'installer' -Filter 'bundle-manifest.json' | Select-Object -First 1
+          if (-not $manifestFile) { throw 'bundle-manifest.json missing from the artifact.' }
+          $m = Get-Content $manifestFile.FullName -Raw | ConvertFrom-Json
+
+          $installerSha = $m.widget_sha256
+          $version = $m.version
+          if (-not $installerSha) { throw 'bundle-manifest.json has no widget_sha256 - the build script (build-installer.bat) is out of date.' }
+          Write-Output "Installer widget bundle sha256: $installerSha (version $version)"
+
+          # Resolve the tarball URL from the registry metadata (404s cleanly
+          # when the version isn't published yet - the npm workflow runs in
+          # parallel with this one, so poll for it up to 10 minutes).
+          $metaUrl = "https://registry.npmjs.org/@mylikita/booking-widget/$version"
+          $tarball = $null
+          $deadline = (Get-Date).AddMinutes(10)
+          while (-not $tarball -and (Get-Date) -lt $deadline) {
+            try {
+              $meta = Invoke-RestMethod -Uri $metaUrl -UseBasicParsing -TimeoutSec 30
+              if ($meta.dist.tarball) { $tarball = $meta.dist.tarball }
+            } catch {
+              Write-Output "@mylikita/booking-widget@$version not on the registry yet (retrying)..."
+              Start-Sleep -Seconds 20
+            }
+          }
+          if (-not $tarball) { throw "@mylikita/booking-widget@$version was never found on the npm registry within 5 minutes - is the version published?" }
+          Write-Output "Registry tarball: $tarball"
+
+          $tgz = Join-Path $env:TEMP "booking-widget-$version.tgz"
+          Invoke-WebRequest -Uri $tarball -OutFile $tgz -UseBasicParsing -TimeoutSec 60
+          if (-not (Get-Item $tgz).Length) { throw "Tarball download produced an empty file: $tarball" }
+
+          # Extract and locate the published min bundle.
+          $extractDir = Join-Path $env:TEMP "booking-widget-$version"
+          if (Test-Path $extractDir) { Remove-Item $extractDir -Recurse -Force }
+          New-Item -ItemType Directory -Path $extractDir | Out-Null
+          tar -xf $tgz -C $extractDir
+          $npmBundles = @(Get-ChildItem $extractDir -Recurse -Filter 'mylikita-booking-widget.min.js')
+          if ($npmBundles.Count -ne 1) { throw "The published npm package must contain exactly one dist/mylikita-booking-widget.min.js, found $($npmBundles.Count)." }
+          $npmBundle = $npmBundles[0]
+          $npmSha = (Get-FileHash $npmBundle.FullName -Algorithm SHA256).Hash
+          Write-Output "npm-published widget bundle sha256: $npmSha"
+
+          if ($npmSha -ne $installerSha) {
+            throw "BUNDLE DRIFT DETECTED: the installer ships widget sha256 $installerSha but the npm registry @mylikita/booking-widget@$version is $npmSha. Most likely the rebuilt dist was never committed - run 'npm run build' in packages/booking-widget, commit packages/booking-widget/dist (and the version bump), then re-push the tag. Otherwise the offline install and the CDN/npm version behave differently for the same embed snippet."
+          }
+          Write-Output '[OK] Installer widget bundle is byte-for-byte identical to the published npm package (no drift).'
+
   # The FINAL pre-ship check: actually run the installer headlessly on a
   # Windows Server VM (windows-latest runners are Windows Server 2022/2025)
   # and verify the app comes up. This exercises the real post-install path:
