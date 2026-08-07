@@ -79,6 +79,7 @@ jobs:
       # always: bump package.json to the tag version, then re-tag.
       - name: Assert package version matches the tag
         if: ${{ github.event_name == 'push' }}
+        working-directory: packages/booking-widget
         shell: bash
         run: |
           pkg_ver="$(node -p "require('./package.json').version")"
@@ -174,6 +175,7 @@ jobs:
       # bump would no-op the idempotent publish and 404 on the CDN check.
       - name: Assert package version matches the tag
         if: ${{ github.event_name == 'push' }}
+        working-directory: packages/booking-widget-react
         shell: bash
         run: |
           pkg_ver="$(node -p "require('./package.json').version")"
