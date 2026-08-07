@@ -46,6 +46,7 @@ call :verify "%NODE_DIR%\node.exe"             "runtime\node\node.exe"
 call :verify "%MYSQL_DIR%\bin\mysqld.exe"      "runtime\mysql\bin\mysqld.exe"
 call :verify "%NSSM%"                          "runtime\nssm\nssm.exe"
 call :verify "%FRONTEND_DIST%\index.html"      "frontend\dist\index.html"
+call :verify "%FRONTEND_DIST%\widget\mylikita-booking-widget.min.js" "frontend\dist\widget\mylikita-booking-widget.min.js"
 call :verify "%SQL_FILE%"                      "database\prime-db.sql"
 
 :: -------------------------------------------- reuse .env if already present --

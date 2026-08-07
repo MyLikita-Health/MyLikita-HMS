@@ -207,6 +207,22 @@ if not exist "%DIST%\frontend\dist" mkdir "%DIST%\frontend\dist"
 xcopy /e /i /y /q "%ROOT%\frontend\dist\*" "%DIST%\frontend\dist\" >nul
 echo  [OK] Frontend build copied.
 
+rem ----------------------------------------- bundle the booking widget ----
+rem Embed the @mylikita/booking-widget dist under frontend\dist\widget so the
+rem offline app serves it at /widget/* (the backend statically serves the
+rem whole frontend/dist tree). A clinic website can then embed the booking
+rem form straight from its own install - no npm registry or CDN needed.
+rem The widget dist is committed to the repo (v0.1.1), so this is a plain
+rem copy; if it is ever missing the build MUST fail loudly.
+if not exist "%DIST%\frontend\dist\widget" mkdir "%DIST%\frontend\dist\widget"
+xcopy /e /i /y /q "%ROOT%\packages\booking-widget\dist\*" "%DIST%\frontend\dist\widget\" >nul
+if not exist "%DIST%\frontend\dist\widget\mylikita-booking-widget.min.js" (
+    echo  [ERROR] booking-widget bundle missing - expected:
+    echo          %DIST%\frontend\dist\widget\mylikita-booking-widget.min.js
+    exit /b 1
+)
+echo  [OK] Booking widget bundled (frontend\dist\widget).
+
 :: ----------------------------------------------- bundle the backend --------
 echo.
 echo  Bundling backend code...
@@ -277,7 +293,7 @@ popd
 ::: releases). Every entry is a Test-Path on the ACTUAL assembled bundle.
 echo.
 echo  Writing bundle manifest...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$m=@{}; $f=@{ 'backend\app.js'='%DIST%\backend\app.js'; 'backend\express'='%DIST%\backend\node_modules\express\package.json'; 'frontend\index.html'='%DIST%\frontend\dist\index.html'; 'runtime\node.exe'='%DIST%\runtime\node\node.exe'; 'runtime\mysqld.exe'='%DIST%\runtime\mysql\bin\mysqld.exe'; 'runtime\nssm.exe'='%DIST%\runtime\nssm\nssm.exe'; 'database\prime-db.sql'='%DIST%\database\prime-db.sql'; 'scripts\postinstall.cmd'='%DIST%\scripts\postinstall.cmd' }; foreach ($k in $f.Keys) { $m[$k]=[bool](Test-Path $f[$k]) }; $ph=Get-ChildItem '%DIST%\frontend\dist' -Recurse -Filter *.js -ErrorAction SilentlyContinue | Select-String -Pattern '__MYLIKITA_SERVER_IP__' -List -SimpleMatch | Select-Object -First 1; $m['placeholder_present']=[bool]$ph; $exe=Get-Item '%DIST%\output\MyLikita-Setup-%VERSION%.exe' -ErrorAction SilentlyContinue; $m['installer_mb']=[math]::Round($exe.Length/1MB); $m['version']='%VERSION%'; $m | ConvertTo-Json | Set-Content '%DIST%\bundle-manifest.json' -Encoding UTF8"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$m=@{}; $f=@{ 'backend\app.js'='%DIST%\backend\app.js'; 'backend\express'='%DIST%\backend\node_modules\express\package.json'; 'frontend\index.html'='%DIST%\frontend\dist\index.html'; 'runtime\node.exe'='%DIST%\runtime\node\node.exe'; 'runtime\mysqld.exe'='%DIST%\runtime\mysql\bin\mysqld.exe'; 'runtime\nssm.exe'='%DIST%\runtime\nssm\nssm.exe'; 'database\prime-db.sql'='%DIST%\database\prime-db.sql'; 'scripts\postinstall.cmd'='%DIST%\scripts\postinstall.cmd'; 'widget\mylikita-booking-widget.min.js'='%DIST%\frontend\dist\widget\mylikita-booking-widget.min.js' }; foreach ($k in $f.Keys) { $m[$k]=[bool](Test-Path $f[$k]) }; $ph=Get-ChildItem '%DIST%\frontend\dist' -Recurse -Filter *.js -ErrorAction SilentlyContinue | Select-String -Pattern '__MYLIKITA_SERVER_IP__' -List -SimpleMatch | Select-Object -First 1; $m['placeholder_present']=[bool]$ph; $wg=Get-Content '%DIST%\frontend\dist\widget\mylikita-booking-widget.min.js' -Raw -ErrorAction SilentlyContinue; $m['widget_global_present']=[bool]($wg -match 'MyLikitaBookingWidget'); $exe=Get-Item '%DIST%\output\MyLikita-Setup-%VERSION%.exe' -ErrorAction SilentlyContinue; $m['installer_mb']=[math]::Round($exe.Length/1MB); $m['version']='%VERSION%'; $m | ConvertTo-Json | Set-Content '%DIST%\bundle-manifest.json' -Encoding UTF8"
 if errorlevel 1 (
     echo  [ERROR] Could not write the bundle manifest.
     exit /b 1

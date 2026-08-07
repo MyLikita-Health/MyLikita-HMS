@@ -157,7 +157,7 @@ jobs:
           Write-Output "Bundle manifest: version=$($m.version) installer_mb=$($m.installer_mb)"
 
           $failed = $false
-          $required = @('backend\app.js','backend\express','frontend\index.html','runtime\node.exe','runtime\mysqld.exe','runtime\nssm.exe','database\prime-db.sql','scripts\postinstall.cmd')
+          $required = @('backend\app.js','backend\express','frontend\index.html','runtime\node.exe','runtime\mysqld.exe','runtime\nssm.exe','database\prime-db.sql','scripts\postinstall.cmd','widget\mylikita-booking-widget.min.js')
           foreach ($name in $required) {
             if ($m.($name)) { Write-Output "[OK] $name" }
             else { Write-Output "[MISSING] $name"; $failed = $true }
@@ -167,6 +167,14 @@ jobs:
           # the real frontend dist before compiling the installer.
           if ($m.placeholder_present) { Write-Output '[OK] frontend bundle contains the server-IP placeholder' }
           else { Write-Output '[MISSING] server-IP placeholder not found in the frontend bundle'; $failed = $true }
+
+          # The offline app must ship the booking-widget bundle (served at
+          # /widget/mylikita-booking-widget.min.js) AND the bundle must expose
+          # the MyLikitaBookingWidget global the embed script relies on.
+          if ($m.'widget\mylikita-booking-widget.min.js') { Write-Output '[OK] booking-widget bundle shipped in the installer' }
+          else { Write-Output '[MISSING] booking-widget bundle not in the installer'; $failed = $true }
+          if ($m.widget_global_present) { Write-Output '[OK] booking-widget bundle exposes the MyLikitaBookingWidget global' }
+          else { Write-Output '[MISSING] booking-widget global MyLikitaBookingWidget not found in the bundle'; $failed = $true }
 
           # Cross-check the manifest's installer size against the real exe.
           if (-not $m.installer_mb -or [int]$m.installer_mb -lt 100) { Write-Output "[MISSING] manifest installer size invalid ($($m.installer_mb) MB)"; $failed = $true }
@@ -280,6 +288,33 @@ jobs:
             Start-Sleep -Seconds 10
           }
           if (-not $ok) { throw 'http://localhost:46990/ did not return the MyLikita login page.' }
+
+      # The offline app must serve the booking-widget bundle it shipped
+      # (frontend\dist\widget\*) at /widget/* — a clinic website embeds the
+      # booking form straight from its own install, so this asserts both the
+      # file reached the disk AND the backend's static server exposes it with
+      # the MyLikitaBookingWidget global the embed script depends on.
+      - name: Verify offline app serves the booking widget
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $url = 'http://localhost:46990/widget/mylikita-booking-widget.min.js'
+          $deadline = (Get-Date).AddSeconds(60)
+          $ok = $false
+          while ((Get-Date) -lt $deadline) {
+            try {
+              $r = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 15
+              if ($r.StatusCode -eq 200) {
+                if ($r.Content -match 'MyLikitaBookingWidget') { $ok = $true; break }
+                Write-Output 'Widget served but the MyLikitaBookingWidget global is missing - retrying.'
+              }
+            } catch {
+              Write-Output "Widget fetch attempt failed (retrying): $($_.Exception.Message)"
+            }
+            Start-Sleep -Seconds 5
+          }
+          if (-not $ok) { throw 'GET /widget/mylikita-booking-widget.min.js did not serve the MyLikitaBookingWidget global.' }
+          Write-Output '[OK] Offline app serves the booking widget (/widget/mylikita-booking-widget.min.js with MyLikitaBookingWidget).'
 
       # The frontend's post-login gate (AuthenticatedContainer) fetches this
       # endpoint and redirects to /onboarding/claim whenever onboarding_status
