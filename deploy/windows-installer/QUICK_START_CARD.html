@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>MyLikita — Quick Start Card</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: "Segoe UI", Arial, sans-serif;
+    color: #1e293b;
+    background: #f1f5f9;
+    padding: 24px;
+  }
+  .card {
+    max-width: 210mm;
+    margin: 0 auto;
+    background: #fff;
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 12px 40px rgba(15, 42, 90, 0.15);
+  }
+  header {
+    background: linear-gradient(135deg, #0069d9, #0a4da3);
+    color: #fff;
+    padding: 18px 26px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  header .logo-mark {
+    width: 42px; height: 42px; border-radius: 10px;
+    background: #fff; object-fit: contain; padding: 6px;
+    box-sizing: border-box; flex-shrink: 0;
+  }
+  header h1 { font-size: 19px; font-weight: 700; letter-spacing: 0.2px; }
+  header p { font-size: 11.5px; opacity: 0.85; margin-top: 2px; }
+  main { padding: 20px 26px 22px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 22px; }
+  h2 {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
+    color: #0069d9; font-weight: 700;
+    margin: 0 0 8px; border-bottom: 2px solid #e2e8f0; padding-bottom: 4px;
+  }
+  .steps { list-style: none; counter-reset: step; }
+  .steps li {
+    counter-increment: step; position: relative;
+    padding: 5px 0 5px 30px; font-size: 12.5px; line-height: 1.45;
+  }
+  .steps li::before {
+    content: counter(step);
+    position: absolute; left: 0; top: 5px;
+    width: 20px; height: 20px; border-radius: 50%;
+    background: #0069d9; color: #fff; font-size: 11px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .url-box {
+    background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px;
+    padding: 8px 12px; font-family: Consolas, monospace; font-size: 12px;
+    color: #0a4da3; margin-bottom: 6px; word-break: break-all;
+  }
+  .url-box small { display: block; color: #475569; font-family: "Segoe UI", Arial, sans-serif; font-size: 10.5px; margin-top: 2px; }
+  table.creds { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  table.creds td { border: 1px solid #e2e8f0; padding: 6px 10px; }
+  table.creds td:first-child { background: #f8fafc; font-weight: 600; width: 34%; }
+  table.creds code { background: #f1f5f9; border-radius: 4px; padding: 1px 6px; font-size: 12px; }
+  .warn {
+    background: #fef3c7; border: 1px solid #fde68a; border-radius: 8px;
+    padding: 8px 12px; font-size: 11.5px; color: #78350f; margin-top: 8px;
+  }
+  .row { margin-bottom: 14px; }
+  ul.tight { font-size: 12.5px; line-height: 1.5; padding-left: 18px; }
+  ul.tight li { margin-bottom: 3px; }
+  .support {
+    background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px;
+    padding: 12px 16px; margin-top: 6px;
+  }
+  .support h2 { margin-top: 0; }
+  .support p { font-size: 12.5px; line-height: 1.5; }
+  .support .contact { font-weight: 700; color: #0a4da3; }
+  footer {
+    background: #f1f5f9; border-top: 1px solid #e2e8f0;
+    text-align: center; padding: 10px; font-size: 10.5px; color: #64748b;
+  }
+  @media print {
+    body { background: #fff; padding: 0; }
+    .card { box-shadow: none; border-radius: 0; }
+    .pagebreak { page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <header>
+      <img class="logo-mark" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiByb2xlPSJpbWciIGFyaWEtbGFiZWw9Ik15TGlraXRhIj4KICA8cmVjdCB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiIgZmlsbD0iI2ZmZmZmZiIvPgogIDxnIHRyYW5zZm9ybT0idHJhbnNsYXRlKDE0MS44NiA2Nikgc2NhbGUoMC40NzI2MzY4MTU5MjAzOTgpIj48cmVjdCB4PSIxNjEiIHk9IjAiIHdpZHRoPSIxNjEiIGhlaWdodD0iMTYxIiBmaWxsPSIjMDE2OURBIi8+PHJlY3QgeD0iMCIgeT0iMTYwIiB3aWR0aD0iMTYyIiBoZWlnaHQ9IjE2MSIgZmlsbD0iIzAxNjlEQSIvPjxyZWN0IHg9IjMyMSIgeT0iMTYwIiB3aWR0aD0iMTYyIiBoZWlnaHQ9IjE2MSIgZmlsbD0iIzAxNjlEQSIvPjxyZWN0IHg9IjAiIHk9IjQ4MiIgd2lkdGg9IjE2MiIgaGVpZ2h0PSIxNjIiIGZpbGw9IiMwNDk4RkIiLz48cmVjdCB4PSIzMjEiIHk9IjQ4MiIgd2lkdGg9IjE2MiIgaGVpZ2h0PSIxNjIiIGZpbGw9IiMwNDk4RkIiLz48cmVjdCB4PSIxNjEiIHk9IjY0MyIgd2lkdGg9IjE2MSIgaGVpZ2h0PSIxNjEiIGZpbGw9IiMwNDk4RkIiLz4KICA8L2c+Cjwvc3ZnPgo=" alt="MyLikita" />
+      <div>
+        <h1>MyLikita — Quick Start Card</h1>
+        <p>Offline install on your Windows server · everything is in one installer file</p>
+      </div>
+    </header>
+
+    <main>
+      <div class="grid">
+        <div class="row">
+          <h2>Install — 5 minutes of clicks</h2>
+          <ol class="steps">
+            <li>Copy <code>MyLikita-Setup-&lt;version&gt;.exe</code> to the server (USB or network).</li>
+            <li>Double-click it → click <strong>Yes</strong> on the security prompt.</li>
+            <li>Click <strong>Next / Install</strong> — you are not asked to configure anything.</li>
+            <li>Wait while it sets itself up <strong>(5–15 min)</strong>. Don't close the window — the bar may look stuck; it is working.</li>
+            <li>Note the URLs on the final page (also saved in <code>C:\MyLikita\CREDENTIALS.txt</code>), then <strong>Finish</strong>.</li>
+          </ol>
+        </div>
+
+        <div class="row">
+          <h2>Log in</h2>
+          <div class="url-box">http://localhost:46990/<small>on the server itself</small></div>
+          <div class="url-box">http://&lt;SERVER-IP&gt;:46990/<small>from staff computers · find the IP with <code>ipconfig</code></small></div>
+
+          <h2 style="margin-top:12px">Initial admin account</h2>
+          <table class="creds">
+            <tr><td>Username</td><td><code>admin</code></td></tr>
+            <tr><td>Password</td><td><code>123456</code></td></tr>
+          </table>
+          <div class="warn">🔒 <strong>Change this password at first login</strong> — it is a public default and the system will not force you to.
+            Steps: <strong>top-right → Profile → Change Password</strong> → enter <code>123456</code> + a new password → <strong>Save</strong>.
+            (On a brand-new install you may instead be taken to a short facility setup wizard where you choose the admin password there.)
+            Create separate accounts for staff — don't share this one.</div>
+        </div>
+      </div>
+
+      <div class="grid" style="margin-top:8px">
+        <div class="row">
+          <h2>What you get</h2>
+          <ul class="tight">
+            <li>Installed into <code>C:\MyLikita\</code> — app + built-in database, no extra software.</li>
+            <li>Two services, <strong>MyLikita</strong> and <strong>MyLikitaMySQL</strong>, auto-start on boot.</li>
+            <li>Firewall already opened so other computers can connect.</li>
+            <li>Works with <strong>no internet</strong>, during or after install.</li>
+          </ul>
+        </div>
+
+        <div class="row">
+          <h2>Updates &amp; quick fixes</h2>
+          <ul class="tight">
+            <li><strong>Update:</strong> run the new installer over the old one — <strong>all data is kept</strong>, nothing is wiped.</li>
+            <li><strong>Can't connect from another PC?</strong> Check the IP, firewall rule <em>MyLikita</em>, and antivirus on port 46990.</li>
+            <li><strong>Server IP changed?</strong> Right-click <code>C:\MyLikita\scripts\update-ip.cmd</code> → <em>Run as administrator</em>.</li>
+            <li><strong>App stuck/erroring?</strong> <code>"C:\MyLikita\runtime\nssm\nssm.exe" restart MyLikita</code> (Admin prompt).</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="support">
+        <h2>Need help?</h2>
+        <p>
+          Contact <span class="contact">support@mylikita.com</span> and attach these two files (found on the server):
+          <code>C:\MyLikita\logs\install.log</code> (installation problems) and
+          <code>C:\MyLikita\logs\err.log</code> (app problems).
+        </p>
+      </div>
+    </main>
+
+    <footer>MyLikita Hospital System · offline deployment · one file, no internet needed</footer>
+  </div>
+</body>
+</html>

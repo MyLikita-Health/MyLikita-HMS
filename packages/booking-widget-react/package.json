@@ -1,0 +1,54 @@
+{
+  "name": "@mylikita/booking-widget-react",
+  "version": "0.1.1",
+  "description": "React component wrapper for @mylikita/booking-widget — drop <BookingWidget relayUrl=… websiteKey=… facilityId=… /> into any React hospital website and get appointment booking that syncs through the MyLikita relay.",
+  "type": "module",
+  "main": "dist/mylikita-booking-widget-react.cjs",
+  "module": "dist/mylikita-booking-widget-react.esm.js",
+  "browser": "dist/mylikita-booking-widget-react.esm.js",
+  "exports": {
+    ".": {
+      "import": "./dist/mylikita-booking-widget-react.esm.js",
+      "require": "./dist/mylikita-booking-widget-react.cjs",
+      "default": "./dist/mylikita-booking-widget-react.esm.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "node build.mjs",
+    "build:demo": "node build-demo.mjs",
+    "test": "node test/react-wrapper.test.mjs",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "keywords": [
+    "mylikita",
+    "react",
+    "appointment",
+    "booking",
+    "widget",
+    "hospital",
+    "relay",
+    "healthcare"
+  ],
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "peerDependencies": {
+    "react": ">=16.8.0",
+    "react-dom": ">=16.8.0"
+  },
+  "dependencies": {
+    "@mylikita/booking-widget": "0.1.1"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0",
+    "jsdom": "^16.7.0",
+    "react": "16.14.0",
+    "react-dom": "16.14.0"
+  }
+}

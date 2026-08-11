@@ -1,0 +1,2 @@
+# Transient test-harness bundle (rebuilt by `npm test`)
+dist/.test-harness.mjs

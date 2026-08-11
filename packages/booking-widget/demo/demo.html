@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>@mylikita/booking-widget — demo</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    padding: 40px 16px;
+  }
+  .demo { width: 100%; max-width: 860px; }
+  h1 { font-size: 20px; margin: 0 0 4px; color: #0f172a; }
+  .tagline { font-size: 13px; color: #64748b; margin: 0 0 20px; }
+  .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+  @media (max-width: 760px) { .cards { grid-template-columns: 1fr; } }
+  .panel {
+    background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; padding: 18px;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, .06);
+  }
+  .panel h2 { font-size: 14px; margin: 0 0 10px; color: #334155; }
+  .theme-row { display: flex; gap: 8px; margin-top: 8px; }
+  .theme-row button {
+    font: inherit; font-size: 12px; padding: 6px 12px; border-radius: 8px; cursor: pointer;
+    border: 1px solid #cbd5e1; background: #f8fafc; color: #334155;
+  }
+  .theme-row button:hover { border-color: #0d6efd; color: #0d6efd; }
+  .log {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px; color: #475569; background: #f8fafc;
+    border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; height: 130px;
+    overflow: auto; margin: 12px 0 0; white-space: pre-wrap;
+  }
+  .log b { color: #0d6efd; font-weight: 600; }
+</style>
+</head>
+<body>
+  <div class="demo">
+    <h1>@mylikita/booking-widget — offline demo</h1>
+    <p class="tagline">
+      Runs entirely in the page against an in-page mock of the MyLikita relay: submit a booking,
+      watch the widget poll, and see it flip to <b>confirmed</b> after two polls. No backend needed.
+    </p>
+
+    <div class="cards">
+      <div class="panel">
+        <h2>Widget (default theme)</h2>
+        <div id="booking"></div>
+      </div>
+
+      <div class="panel">
+        <h2>Second widget (custom theme) + live log</h2>
+        <div id="booking2"></div>
+        <div class="theme-row">
+          <button data-theme="default">Reset theme</button>
+          <button data-theme="teal">Teal</button>
+          <button data-theme="sunset">Sunset</button>
+        </div>
+        <pre class="log" id="log"></pre>
+      </div>
+    </div>
+  </div>
+
+  <script src="../dist/mylikita-booking-widget.js"></script>
+  <script>
+    // ── in-page mock relay (implements the v1 contract: POST /v1/bookings,
+    //    GET /v1/bookings/:ref). Swapped in by overriding global fetch ─────
+    // NOTE: demo-only. A production page must NOT override fetch — point the
+    // widget at the real relay URL instead.
+    const bookings = new Map(); // booking_ref -> { payload, polls }
+    const log = (line) => {
+      const el = document.getElementById('log');
+      el.innerHTML = line + '\n' + el.innerHTML;
+    };
+
+    const mockRelay = async (url, init) => {
+      const method = (init && init.method) || 'GET';
+      const u = new URL(url, location.href);
+
+      if (method === 'POST' && u.pathname === '/v1/bookings') {
+        const body = JSON.parse(init.body);
+        const existing = [...bookings.values()].find((b) => b.external_ref === body.external_ref);
+        if (existing) {
+          log('<b>[mock relay]</b> idempotent replay — same external_ref, returning existing booking');
+          return json(201, { booking_ref: existing.booking_ref, status: 'pending_confirmation' });
+        }
+        const dup = [...bookings.values()].find(
+          (b) => b.phone === body.patient_phone && b.datetime === body.appt_datetime
+        );
+        if (dup) {
+          log('<b>[mock relay]</b> duplicate slot → 409 duplicate_booking');
+          return json(409, { error: 'duplicate_booking', message: 'This patient already has this appointment slot booked', booking_ref: dup.booking_ref });
+        }
+        const booking_ref = 'MLB-' + Date.now().toString(36).toUpperCase();
+        bookings.set(booking_ref, { ...body, booking_ref, external_ref: body.external_ref, phone: body.patient_phone, datetime: body.appt_datetime, polls: 0 });
+        log('<b>[mock relay]</b> booking ' + booking_ref + ' stored (pending_confirmation)');
+        return json(201, { booking_ref, status: 'pending_confirmation' });
+      }
+
+      if (method === 'GET' && u.pathname === '/v1/providers') {
+        log('<b>[mock relay]</b> GET /v1/providers — serving the mapped provider list');
+        return json(200, {
+          facility_id: FACILITY,
+          providers: [
+            { external_id: 'dr-khalil', name: 'Dr. Khalil', specialty: 'General medicine' },
+            { external_id: 'dr-amina', name: 'Dr. Amina', specialty: 'Dentistry' },
+          ],
+        });
+      }
+
+      if (method === 'GET' && u.pathname.startsWith('/v1/bookings/')) {
+        const ref = decodeURIComponent(u.pathname.split('/').pop());
+        const b = bookings.get(ref);
+        if (!b) return json(404, { error: 'not_found', message: 'Unknown booking_ref' });
+        b.polls += 1;
+        // Transition to confirmed on the second poll so the demo shows the poll loop.
+        const status = b.polls >= 2 ? 'confirmed' : 'pending_confirmation';
+        log('<b>[mock relay]</b> poll ' + ref + ' → ' + status);
+        return json(200, { booking_ref: ref, status, appt_ref: status === 'confirmed' ? 'APT-DEMO123' : undefined });
+      }
+
+      return json(500, { error: 'server_error', message: 'mock relay: unhandled ' + method + ' ' + url });
+    };
+
+    const realFetch = window.fetch.bind(window);
+    window.fetch = (url, init) => mockRelay(url, init);
+
+    function json(status, body) {
+      return Promise.resolve(new Response(JSON.stringify(body), {
+        status,
+        headers: { 'Content-Type': 'application/json' },
+      }));
+    }
+
+    // ── mount two widgets ──────────────────────────────────────────────────
+    const KEY = 'wk_demo_public_key';
+    const FACILITY = 'F1';
+
+    MyLikitaBookingWidget.createBookingWidget(document.getElementById('booking'), {
+      // The in-page mock relay overrides fetch, so this URL is never actually
+      // contacted — the widget still requires a non-empty relay URL.
+      relayUrl: 'https://api.mylikita.com',
+      websiteKey: KEY,
+      facilityId: FACILITY,
+      providers: [{ external_id: 'dr-khalil', label: 'Dr. Khalil' }, { external_id: 'dr-amina', label: 'Dr. Amina' }],
+      services: ['General consultation', 'Dental check-up', 'X-ray'],
+      pollIntervalMs: 800,
+      maxTries: 20,
+      onStatus: (s) => log('<b>[widget 1]</b> status → ' + s.status + (s.appt_ref ? ' (' + s.appt_ref + ')' : '')),
+      onBooking: (b) => log('<b>[widget 1]</b> booked → ' + b.booking_ref),
+    });
+
+    const w2 = MyLikitaBookingWidget.createBookingWidget(document.getElementById('booking2'), {
+      relayUrl: 'https://api.mylikita.com',
+      websiteKey: KEY,
+      facilityId: FACILITY,
+      // Phase C2/C3: no static providers — load them from the relay's
+      // GET /v1/providers on mount (the mock serves the mapped list).
+      loadProviders: true,
+      pollIntervalMs: 800,
+      maxTries: 20,
+      theme: { primary: '#0d9488', primaryDark: '#0f766e' },
+      onStatus: (s) => log('<b>[widget 2]</b> status → ' + s.status),
+      onError: (e) => log('<b>[widget 2]</b> provider fetch failed (non-fatal): ' + e.message),
+    });
+
+    document.querySelectorAll('[data-theme]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const preset = btn.dataset.theme;
+        const vars = {
+          teal: { '--mlw-primary': '#0d9488', '--mlw-primary-dark': '#0f766e' },
+          sunset: { '--mlw-primary': '#ea580c', '--mlw-primary-dark': '#c2410c', '--mlw-bg': '#fff7ed' },
+        }[preset] || {};
+        const node = document.getElementById('booking2');
+        for (const k of ['--mlw-primary', '--mlw-primary-dark', '--mlw-bg']) node.style.removeProperty(k);
+        Object.entries(vars).forEach(([k, v]) => node.style.setProperty(k, v));
+        log('<b>[demo]</b> theme applied via CSS variables on .mylikita-widget');
+      });
+    });
+
+    log('<b>[demo]</b> ready — submit a booking; it flips to confirmed after two polls.');
+  </script>
+</body>
+</html>

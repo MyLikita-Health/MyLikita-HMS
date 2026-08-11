@@ -1,0 +1,161 @@
+# @mylikita/booking-widget
+
+**Live on npm:** [`@mylikita/booking-widget`](https://www.npmjs.com/package/@mylikita/booking-widget) ·
+[unpkg CDN](https://unpkg.com/@mylikita/booking-widget) ·
+[React wrapper `@mylikita/booking-widget-react`](https://www.npmjs.com/package/@mylikita/booking-widget-react)
+
+Drop-in appointment booking for hospital websites built on MyLikita. A
+zero-dependency vanilla-JS widget (no framework required) that:
+
+1. renders a booking form into any element on your page,
+2. submits through the **MyLikita relay** (`POST /v1/bookings`),
+3. polls the booking (`GET /v1/bookings/:ref`) until the hospital confirms,
+   cancels, reschedules, marks no-show, or the request expires.
+
+It implements the **MyLikita Website Booking API (v1)** exactly — same auth,
+same fields, same idempotency rules, same statuses — so the hospital side
+needs no custom integration work.
+
+---
+
+## Install
+
+**Script tag (simplest for agency sites):**
+
+```html
+<script src="https://unpkg.com/@mylikita/booking-widget"></script>
+<div id="booking"></div>
+<script>
+  MyLikitaBookingWidget.createBookingWidget(document.getElementById('booking'), {
+    relayUrl: 'https://api.mylikita.com',
+    websiteKey: 'wk_9f2k…',        // public client id — not a secret
+    facilityId: 'F1',
+  });
+</script>
+```
+
+**npm (for bundlers):**
+
+```bash
+npm install @mylikita/booking-widget
+```
+
+```js
+import { createBookingWidget } from '@mylikita/booking-widget';
+createBookingWidget(document.getElementById('booking'), { relayUrl, websiteKey, facilityId });
+```
+
+**React sites:** use [`@mylikita/booking-widget-react`](https://www.npmjs.com/package/@mylikita/booking-widget-react) — the
+same widget as a `<BookingWidget relayUrl=… websiteKey=… facilityId=… />`
+component (all options are props, SSR-safe, imperative ref).
+
+## Options
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `relayUrl` | string | — | **required** — relay base URL, e.g. `https://api.mylikita.com` |
+| `websiteKey` | string | — | **required** — your public client id (Bearer on every request) |
+| `facilityId` | string | — | **required** — the hospital's public facility id |
+| `providers` | array | `[]` | `[{ external_id, label }]` — shown as a "Preferred doctor" select; unmapped slugs simply arrive unassigned (never block on them). When provided, it wins and no fetch happens |
+| `loadProviders` | bool | `false` | fetch the facility's mapped providers from the relay (`GET /v1/providers`) on mount and populate the doctor dropdown automatically. Ignored when `providers` is non-empty. A fetch failure is non-fatal: the widget keeps "No preference" and still works |
+| `services` | array | `[]` | `['General consultation', …]` — shown as a service select (free-text input otherwise) |
+| `durationMins` | number | `30` | sent with the booking |
+| `pollIntervalMs` | number | `5000` | how often to poll the booking status |
+| `maxTries` | number | `12` | poll budget (~1 min at the default); the widget then shows "request received" |
+| `showBrand` | bool | `true` | set `false` to white-label the widget — hides the MyLikita mark + wordmark header (for premium-tier hosts). Everything else (title, form, status view) is untouched |
+| `theme` | object | defaults | see [Theming](#theming) |
+| `text` | object | defaults | i18n overrides for every label/message (see `src/widget.js` `DEFAULT_TEXT`) |
+| `externalRef` | fn | auto | override the idempotency-key generator |
+| `onBooking` | fn | — | `(booking, payload) => …` called once the relay accepted it |
+| `onStatus` | fn | — | `(statusObj) => …` called on each poll result |
+| `onError` | fn | — | `(err) => …` on create failure |
+
+Returns `{ destroy(), reset(), getForm() }`.
+
+## Provider list (doctor dropdown) — `loadProviders`
+
+The hospital controls which doctors appear on your website. Staff map a
+website slug (`external_id`) to each doctor in the hub **Providers** tab; the
+hospital server pushes those mapped providers to the relay on every sync cycle
+(`POST /v1/out/providers`), and the widget fetches them on mount
+(`GET /v1/providers`):
+
+```js
+createBookingWidget(el, {
+  relayUrl, websiteKey, facilityId,
+  loadProviders: true,   // fetch the mapped doctor list instead of hardcoding
+});
+```
+
+- Only **mapped, active** providers are served — the hospital decides what the
+  website sees (names + slugs only; no phones, no emails, no PHI).
+- The dropdown appears the moment the fetch resolves; a slow/offline relay
+  degrades gracefully to "No preference" (a submitted booking with no doctor
+  simply arrives unassigned — the hospital assigns one).
+- Unmapping a doctor on the hospital side removes them from the dropdown on
+  the next sync cycle (~2 min).
+
+## Idempotency & double-submit (built in)
+
+- An `external_ref` is minted (`BK-<ts>-<rand>`) and stored in `sessionStorage`
+  **before** submitting, so a page refresh resubmits the *same* booking instead
+  of creating a duplicate — the relay returns the original `booking_ref`.
+- A genuine double-click on a fresh page hits the relay's
+  `409 duplicate_booking`; the widget treats that as success and polls the
+  existing booking, showing "We found an existing booking request for this slot".
+- The stored ref is cleared once the booking reaches a terminal state, so the
+  next booking mints a fresh one.
+
+## Statuses
+
+| Widget shows | When |
+|---|---|
+| Request received (spinner) | hospital hasn't collected it, or still pending after the poll budget |
+| Confirmed ✓ | `confirmed` |
+| Cancelled / Rescheduled / Missed | corresponding terminal status |
+| Request expired | hospital never collected within 72 h (offline server) — "please call the clinic" |
+
+## Theming
+
+Every colour, radius and font is a CSS custom property scoped to
+`.mylikita-widget`, so you can restyle it from your own stylesheet without
+specificity fights:
+
+```css
+.mylikita-widget {
+  --mlw-primary: #0d9488;      /* buttons, focus rings, accents */
+  --mlw-primary-dark: #0f766e; /* hover state */
+  --mlw-primary-text: #ffffff; /* button label */
+  --mlw-bg: #ffffff;           /* widget background */
+  --mlw-text: #1e293b;         /* labels + values */
+  --mlw-muted: #64748b;        /* secondary text */
+  --mlw-border: #e2e8f0;       /* inputs + widget border */
+  --mlw-danger: #dc3545;
+  --mlw-success: #15803d;
+  --mlw-radius: 10px;          /* input + button radius */
+  --mlw-font: system-ui, …;
+}
+```
+
+Or programmatically:
+
+```js
+createBookingWidget(el, {
+  relayUrl, websiteKey, facilityId,
+  theme: { primary: '#e91e63', radius: 6, bg: '#fffaf5' },
+});
+```
+
+## Support
+
+- **Issues:** report through your MyLikita account manager or the MyLikita
+  support channel you were onboarded with.
+- **The React wrapper:** [`@mylikita/booking-widget-react`](https://www.npmjs.com/package/@mylikita/booking-widget-react).
+
+## Security notes
+
+- `websiteKey` is a **public client id by design** (it ships in browser JS).
+  It is rate-limited per key on the relay and scoped to the facility. Real
+  protection against abuse is the relay's per-key rate limits, not secrecy.
+- The widget never receives or stores hospital patient data — only what the
+  patient typed into your form.

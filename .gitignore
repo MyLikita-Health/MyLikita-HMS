@@ -1,0 +1,10 @@
+.DS_Store
+.freebuff/
+.vscode/
+.kiro/
+node_modules/
+
+# Installer build cache (hundreds of MB of runtime downloads; CI rebuilds it)
+deploy/windows-installer/dist/
+packages/booking-widget/dist/
+packages/booking-widget/node_modules/
