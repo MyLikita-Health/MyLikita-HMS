@@ -31,6 +31,27 @@ export const STYLES = `
 .mylikita-widget *::before,
 .mylikita-widget *::after { box-sizing: border-box; }
 
+.mylikita-widget__brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--mlw-border);
+}
+.mylikita-widget__brand-mark {
+  display: block;
+  flex: 0 0 auto;
+  border-radius: 5px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, .12);
+}
+.mylikita-widget__brand-word {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: .3px;
+  color: var(--mlw-muted);
+}
+
 .mylikita-widget__title {
   font-size: 18px;
   font-weight: 700;

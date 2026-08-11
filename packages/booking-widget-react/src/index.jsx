@@ -12,7 +12,7 @@
  *   import BookingWidget from '@mylikita/booking-widget-react';
  *
  *   <BookingWidget
- *     relayUrl="https://api.mylikita.clinic"
+ *     relayUrl="https://api.mylikita.com"
  *     websiteKey="wk_…"
  *     facilityId="F1"
  *     loadProviders
@@ -22,8 +22,8 @@
  * All option props map 1:1 onto the vanilla widget options (see the vanilla
  * package README for the full reference). Callback props may change identity
  * freely — only the data options (relayUrl, websiteKey, facilityId, providers,
- * services, durationMins, pollIntervalMs, maxTries, theme, text) tear down and
- * recreate the underlying widget.
+ * services, durationMins, pollIntervalMs, maxTries, showBrand, theme, text)
+ * tear down and recreate the underlying widget.
  *
  * The component is SSR-safe: nothing touches the DOM until the browser effect
  * runs, so it renders an empty container on the server.
@@ -43,6 +43,7 @@ const BookingWidget = forwardRef(function BookingWidget(props, ref) {
     durationMins,
     pollIntervalMs,
     maxTries,
+    showBrand,
     theme,
     text,
     externalRef,
@@ -77,6 +78,7 @@ const BookingWidget = forwardRef(function BookingWidget(props, ref) {
     durationMins,
     pollIntervalMs,
     maxTries,
+    showBrand,
     theme,
     text,
   });
@@ -98,6 +100,7 @@ const BookingWidget = forwardRef(function BookingWidget(props, ref) {
       durationMins,
       pollIntervalMs,
       maxTries,
+      showBrand,
       theme,
       text,
       // externalRef is a function — routed through a ref like the callbacks so

@@ -80,7 +80,7 @@ function Demo() {
         <div className="panel">
           <h2>Widget (default theme)</h2>
           <BookingWidget
-            relayUrl="https://api.mylikita.clinic"
+            relayUrl="https://api.mylikita.com"
             websiteKey={KEY}
             facilityId={FACILITY}
             providers={[
@@ -99,7 +99,7 @@ function Demo() {
           <h2>Second widget (themed, loadProviders) + live log</h2>
           <BookingWidget
             ref={w2Ref}
-            relayUrl="https://api.mylikita.clinic"
+            relayUrl="https://api.mylikita.com"
             websiteKey={KEY}
             facilityId={FACILITY}
             loadProviders

@@ -101,7 +101,8 @@ export async function run() {
     assert(title && title.textContent.includes('Book an appointment'), 'title renders');
     assert(host.querySelector('#mlw-name'), 'name input renders');
     assert(host.querySelector('#mlw-datetime'), 'datetime input renders');
-    ok('form mounts with title + fields');
+    assert(host.querySelector('.mylikita-widget__brand'), 'brand header renders by default');
+    ok('form mounts with title + fields + default brand header');
 
     // ── 2. submitting books via relay and polls to confirmed ───────────────
     fill(host, 'mlw-name', 'Aisha');
@@ -195,6 +196,30 @@ export async function run() {
     ReactDOM.unmountComponentAtNode(host);
     host.remove();
     ok('ref.reset() + ref.getForm() + ref.destroy() + ref.getWidget() work');
+  }
+
+  // ── 6b. showBrand:false white-labels the widget (no brand header) ────────
+  console.log('white-label');
+  {
+    installMockRelay();
+    const host = makeContainer();
+    ReactDOM.render(
+      React.createElement(BookingWidget, {
+        relayUrl: 'https://relay.example.test',
+        websiteKey: 'wk_demo',
+        facilityId: 'F1',
+        showBrand: false,
+        pollIntervalMs: 15,
+      }),
+      host,
+    );
+    const ok6b = await waitFor(() => host.querySelector('.mylikita-widget__form'));
+    assert(ok6b, 'widget still mounts with showBrand:false');
+    assert(host.querySelector('.mylikita-widget__brand') === null, 'brand header hidden when showBrand:false');
+    assert(host.querySelector('.mylikita-widget__title'), 'title still renders without brand');
+    ReactDOM.unmountComponentAtNode(host);
+    host.remove();
+    ok('showBrand:false hides the brand header (white-label)');
   }
 
   // ── 6. data-option change recreates the widget (theme) ───────────────────

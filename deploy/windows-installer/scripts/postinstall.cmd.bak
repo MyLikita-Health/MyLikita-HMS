@@ -239,7 +239,7 @@ call :log "Writing backend\.env..."
     echo.
     rem ---- Email via Resend [https://resend.com] - leave empty to disable ----
     echo RESEND_API_KEY=
-    echo EMAIL_FROM=MyLikita ^<hello@mylikita.clinic^>
+    echo EMAIL_FROM=MyLikita ^<hello@mylikita.com^>
     echo.
     echo PUPPETEER_SKIP_DOWNLOAD=true
 ) > "%BACKEND_DIR%\.env"

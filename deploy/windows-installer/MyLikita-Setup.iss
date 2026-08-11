@@ -45,6 +45,12 @@ RestartApplications=no
 ; script may pick another port if 46990 is taken, and it opens its own rule.
 AppComments=MyLikita hospital management system - offline deployment
 SetupIconFile=mylikita.ico
+; Branded wizard images - the small logo appears on every page (incl. the
+; finished page where the CREDENTIALS.txt staff URLs are shown) and the
+; banner on the Welcome/Finished pages. Copied into the bundle by
+; build-installer.bat alongside mylikita.ico.
+WizardImageFile=wizard-side.bmp
+WizardSmallImageFile=wizard-small.bmp
 UninstallDisplayIcon={app}\frontend\dist\icons\favicon.ico
 
 [Languages]

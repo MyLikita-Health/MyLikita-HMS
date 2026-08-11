@@ -154,7 +154,8 @@ set "PATH=%RUNTIME%\node;%PATH%"
 
 :: --------------------------------------------------- build the frontend ----
 echo.
-echo  Building the React frontend (with server-IP placeholder)...
+echo  Building the React frontend (offline build - API base derives from
+echo  window.location, no server-IP placeholder)...
 pushd "%ROOT%\frontend"
 set "SAVED_ENV_PROD="
 if exist ".env.production" (
@@ -162,7 +163,9 @@ if exist ".env.production" (
     copy /y ".env.production" "%CACHE%\env.production.saved" >nul
 )
 (
-    echo VITE_API_URL=http://__MYLIKITA_SERVER_IP__:46990
+    rem Offline installs are served by the backend itself, so the API base is
+    rem window.location.origin at runtime - no VITE_API_URL, no IP to bake.
+    echo VITE_OFFLINE=true
 ) > ".env.production"
 
 rem ckeditor4-react peers react ^18 but the app pins react ^16 - the lockfile
@@ -267,6 +270,22 @@ if not exist "%DIST%\frontend\dist\icons\favicon.ico" (
 copy /y "%DIST%\frontend\dist\icons\favicon.ico" "%DIST%\mylikita.ico" >nul
 echo  [OK] Installer icon: mylikita.ico
 
+rem -------------------------------------------------- wizard branding -----
+rem Branded wizard images (MyLikita logo on a white tile) - the .iss
+rem references them via WizardImageFile / WizardSmallImageFile. If they are
+rem ever missing the ISCC compile fails loudly, so the build must copy them.
+if not exist "%HERE%wizard-small.bmp" (
+    echo  [ERROR] wizard-small.bmp not found next to build-installer.bat.
+    exit /b 1
+)
+if not exist "%HERE%wizard-side.bmp" (
+    echo  [ERROR] wizard-side.bmp not found next to build-installer.bat.
+    exit /b 1
+)
+copy /y "%HERE%wizard-small.bmp" "%DIST%\wizard-small.bmp" >nul
+copy /y "%HERE%wizard-side.bmp" "%DIST%\wizard-side.bmp" >nul
+echo  [OK] Installer wizard images: wizard-small.bmp / wizard-side.bmp
+
 if not exist "%DIST%\scripts" mkdir "%DIST%\scripts"
 copy /y "%HERE%scripts\*.cmd" "%DIST%\scripts\" >nul
 copy /y "%HERE%scripts\check-bundles.js" "%DIST%\scripts\" >nul
@@ -293,7 +312,7 @@ popd
 ::: releases). Every entry is a Test-Path on the ACTUAL assembled bundle.
 echo.
 echo  Writing bundle manifest...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$m=@{}; $f=@{ 'backend\app.js'='%DIST%\backend\app.js'; 'backend\express'='%DIST%\backend\node_modules\express\package.json'; 'frontend\index.html'='%DIST%\frontend\dist\index.html'; 'runtime\node.exe'='%DIST%\runtime\node\node.exe'; 'runtime\mysqld.exe'='%DIST%\runtime\mysql\bin\mysqld.exe'; 'runtime\nssm.exe'='%DIST%\runtime\nssm\nssm.exe'; 'database\prime-db.sql'='%DIST%\database\prime-db.sql'; 'scripts\postinstall.cmd'='%DIST%\scripts\postinstall.cmd'; 'widget\mylikita-booking-widget.min.js'='%DIST%\frontend\dist\widget\mylikita-booking-widget.min.js' }; foreach ($k in $f.Keys) { $m[$k]=[bool](Test-Path $f[$k]) }; $ph=Get-ChildItem '%DIST%\frontend\dist' -Recurse -Filter *.js -ErrorAction SilentlyContinue | Select-String -Pattern '__MYLIKITA_SERVER_IP__' -List -SimpleMatch | Select-Object -First 1; $m['placeholder_present']=[bool]$ph; $wg=Get-Content '%DIST%\frontend\dist\widget\mylikita-booking-widget.min.js' -Raw -ErrorAction SilentlyContinue; $m['widget_global_present']=[bool]($wg -match 'MyLikitaBookingWidget'); $wh=Get-FileHash '%DIST%\frontend\dist\widget\mylikita-booking-widget.min.js' -Algorithm SHA256 -ErrorAction SilentlyContinue; $m['widget_sha256']=if($wh){$wh.Hash}else{$null}; $exe=Get-Item '%DIST%\output\MyLikita-Setup-%VERSION%.exe' -ErrorAction SilentlyContinue; $m['installer_mb']=[math]::Round($exe.Length/1MB); $m['version']='%VERSION%'; $m | ConvertTo-Json | Set-Content '%DIST%\bundle-manifest.json' -Encoding UTF8"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$m=@{}; $f=@{ 'backend\app.js'='%DIST%\backend\app.js'; 'backend\express'='%DIST%\backend\node_modules\express\package.json'; 'frontend\index.html'='%DIST%\frontend\dist\index.html'; 'runtime\node.exe'='%DIST%\runtime\node\node.exe'; 'runtime\mysqld.exe'='%DIST%\runtime\mysql\bin\mysqld.exe'; 'runtime\nssm.exe'='%DIST%\runtime\nssm\nssm.exe'; 'database\prime-db.sql'='%DIST%\database\prime-db.sql'; 'scripts\postinstall.cmd'='%DIST%\scripts\postinstall.cmd'; 'widget\mylikita-booking-widget.min.js'='%DIST%\frontend\dist\widget\mylikita-booking-widget.min.js' }; foreach ($k in $f.Keys) { $m[$k]=[bool](Test-Path $f[$k]) }; $so=Get-ChildItem '%DIST%\frontend\dist' -Recurse -Filter *.js -ErrorAction SilentlyContinue | Select-String -Pattern 'location.origin' -List -SimpleMatch | Select-Object -First 1; $m['same_origin_resolver']=[bool]$so; $wg=Get-Content '%DIST%\frontend\dist\widget\mylikita-booking-widget.min.js' -Raw -ErrorAction SilentlyContinue; $m['widget_global_present']=[bool]($wg -match 'MyLikitaBookingWidget'); $wh=Get-FileHash '%DIST%\frontend\dist\widget\mylikita-booking-widget.min.js' -Algorithm SHA256 -ErrorAction SilentlyContinue; $m['widget_sha256']=if($wh){$wh.Hash}else{$null}; $exe=Get-Item '%DIST%\output\MyLikita-Setup-%VERSION%.exe' -ErrorAction SilentlyContinue; $m['installer_mb']=[math]::Round($exe.Length/1MB); $m['version']='%VERSION%'; $m | ConvertTo-Json | Set-Content '%DIST%\bundle-manifest.json' -Encoding UTF8"
 if errorlevel 1 (
     echo  [ERROR] Could not write the bundle manifest.
     exit /b 1

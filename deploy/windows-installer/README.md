@@ -46,8 +46,10 @@ MyLikita-Setup-1.0.0.exe   ← the ONLY file the client needs
    On reinstall the claim is never reset (guarded UPDATE).
 5. Writes `backend\.env` with auto-generated credentials (MySQL password,
    JWT secret). On reinstall it **reuses** the existing `.env`/database.
-6. **Bakes the server's LAN IP** into the frontend bundle, so every staff
-   browser on the network reaches the API correctly.
+6. Builds the frontend in **offline mode** (`VITE_OFFLINE=true`): the app
+   derives its API base from `window.location` — it is served by this backend,
+   so the browser's own origin IS the API. No IP is baked into the bundle, so
+   a server IP change needs no re-bake and no script.
 7. Registers the backend as an auto-start Windows service (**NSSM**) and
    opens the firewall port (46990).
 8. Verifies the app answers on `http://localhost:46990/`, writes
@@ -78,9 +80,11 @@ What the build does:
 
 1. Downloads (cached): `node-v20.19.0-win-x64.zip` (20.19+ is required by the
    frontend's Vite 7 build), `mysql-8.0.42-winx64.zip`, `nssm-2.24.zip`.
-2. Builds the frontend with `VITE_API_URL=http://__MYLIKITA_SERVER_IP__:46990`
-   (a placeholder the installer replaces with the real LAN IP at install time;
-   the existing `frontend/.env.production` is backed up and restored).
+2. Builds the frontend in **offline mode** (`VITE_OFFLINE=true`, no
+   `VITE_API_URL`): the app resolves its API base from `window.location.origin`
+   at runtime, because the browser loads it FROM this server. Nothing is baked
+   into the bundle — an IP change after install just means staff open the new
+   URL. The existing `frontend/.env.production` is backed up and restored.
 3. Copies the backend and runs `npm install --omit=dev` **with the embedded
    Node 20** so native modules (`bcrypt`, …) match the runtime that ships.
 4. Compiles the installer with ISCC.
@@ -137,7 +141,7 @@ Common failure paths and their logs:
 ```
 C:\MyLikita\
   backend\            ← app.js + node_modules + .env (generated)
-  frontend\dist\      ← built React app (IP baked in)
+  frontend\dist\      ← built React app (API base = window.location, no baked IP)
   runtime\node\       ← embedded Node.js
   runtime\mysql\      ← embedded MySQL (ZIP build)
   runtime\nssm\       ← nssm.exe
@@ -145,7 +149,7 @@ C:\MyLikita\
   database\prime-db.sql
   scripts\            ← postinstall / reconfigure / update-ip / uninstall
   logs\install.log, out.log, err.log
-  CREDENTIALS.txt     ← access URL + where credentials live
+  CREDENTIALS.txt     ← staff access URL + network status (IP / bind / firewall) + where credentials live
 ```
 
 ## Day-to-day ops
@@ -157,9 +161,11 @@ nssm restart MyLikita     :: restart after an update
 :: MySQL service: MyLikitaMySQL   (net start/stop MyLikitaMySQL)
 ```
 
-If the server's IP changes after install, run
-`C:\MyLikita\scripts\update-ip.cmd` (as Administrator) to re-bake the IP into
-the frontend and restart the service.
+If the server's IP changes after install, **no action is needed**: the app
+resolves its API base from the URL it was loaded from (`window.location`), so
+staff simply open `http://<new-IP>:46990/`. The legacy
+`C:\MyLikita\scripts\update-ip.cmd` is kept only as a no-op URL helper for
+older clients — it no longer patches the bundle.
 
 ## Building in CI (GitHub Actions)
 
@@ -181,7 +187,8 @@ The workflow:
 4. **Smoke-tests the installer**: a second job extracts the built `.exe`
    (7-Zip — preinstalled on the runner) and verifies the whole bundle is
    inside it — `backend/app.js` + `node_modules`, `frontend/dist` (including
-   the server-IP placeholder), the Node/MySQL/NSSM runtimes, `prime-db.sql`,
+   the same-origin API resolver — proof the bundle is not IP-baked), the
+   Node/MySQL/NSSM runtimes, `prime-db.sql`,
    and `scripts/postinstall.cmd` — and that the `.exe` is over 100 MB.
 5. **Install-tests the installer (final pre-ship check)**: a third job runs
    the `.exe` headlessly on a Windows Server VM (`windows-latest` runners are

@@ -13,7 +13,7 @@
  *   <script src="mylikita-booking-widget.min.js"></script>
  *   <script>
  *     MyLikitaBookingWidget.createBookingWidget(document.getElementById('booking'), {
- *       relayUrl: 'https://api.mylikita.clinic',
+ *       relayUrl: 'https://api.mylikita.com',
  *       websiteKey: 'wk_...',       // public client id — not a secret
  *       facilityId: 'F1',
  *       providers: [{ external_id: 'dr-khalil', label: 'Dr. Khalil' }],
@@ -28,3 +28,4 @@ export { createBookingWidget } from './widget.js';
 export { createBooking, fetchStatus, pollStatus, newExternalRef, fetchProviders } from './client.js';
 export { STATUS_COPY, statusCopy, TERMINAL_STATUSES } from './state.js';
 export { DEFAULT_THEME, resolveTheme } from './theme.js';
+export { MYLIKITA_MARK_DATA_URI, createBrandHeader } from './brand.js';

@@ -85,11 +85,27 @@ jobs:
           if (-not (Test-Path $iscc)) { throw "ISCC.exe not found at $iscc" }
           Write-Output "Inno Setup $env:INNO_SETUP_VER installed: $iscc"
 
-      - name: Build installer
-        shell: cmd
-        env:
-          MYLIKITA_VERSION: ${{ steps.version.outputs.VERSION }}
-        run: deploy\windows-installer\build-installer.bat
+      # The SetupIconFile (mylikita.ico, copied by the bat from the built
+      # frontend's favicon.ico) is embedded UNCOMPRESSED as RT_ICON resources
+      # in the setup loader, so the icon bytes can be asserted directly inside
+      # the .exe — no third-party PE unpacker needed (7-Zip / innounp both
+      # fail on current Inno Setup output, which is why the smoke-test job
+      # stays extraction-free). This step byte-matches every image in the
+      # favicon against the produced exe AND verifies the chain: mylikita.ico
+      # == built dist favicon == source public favicon. A stale dist or a
+      # hand-edited copy fails the build before the installer ships.
+      - name: Assert the EXE embeds the expected favicon bytes
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = Get-ChildItem 'deploy\windows-installer\dist\output' -Filter 'MyLikita-Setup-*.exe' | Select-Object -First 1
+          if (-not $exe) { throw 'No installer EXE produced by the build.' }
+          $dist = Split-Path (Split-Path $exe.FullName -Parent) -Parent
+          & 'deploy\windows-installer\verify-exe-icon.ps1' `
+            -ExePath $exe.FullName `
+            -IcoPath (Join-Path $dist 'mylikita.ico') `
+            -ExpectedIcoPaths (Join-Path $dist 'frontend\dist\icons\favicon.ico'), 'frontend\public\icons\favicon.ico'
+          if ($LASTEXITCODE -ne 0) { throw 'Icon verification failed — see [FAIL]/[MISSING] lines above.' }
 
       # Uploaded so the smoke-test job can download and inspect it. The
       # release publish happens only after the smoke test passes.
@@ -135,9 +151,9 @@ jobs:
 
       # Verifies the bundle WITHOUT extracting the .exe. The build script
       # writes bundle-manifest.json from the ACTUAL assembled bundle (a
-      # Test-Path per component, the baked server-IP placeholder check, and
-      # the final installer size), and this job cross-checks it against the
-      # real artifact. Extracting an Inno Setup 6.7 installer with a
+      # Test-Path per component, the same-origin API-resolver check, and the
+      # final installer size), and this job cross-checks it against the real
+      # artifact. Extracting an Inno Setup 6.7 installer with a
       # third-party unpacker is fragile - 7-Zip (even 26.x) and innounp
       # (supports <= 6.1.2) both fail on current Inno output.
       - name: Verify installer bundle
@@ -163,10 +179,11 @@ jobs:
             else { Write-Output "[MISSING] $name"; $failed = $true }
           }
 
-          # The build script verified the baked server-IP placeholder against
-          # the real frontend dist before compiling the installer.
-          if ($m.placeholder_present) { Write-Output '[OK] frontend bundle contains the server-IP placeholder' }
-          else { Write-Output '[MISSING] server-IP placeholder not found in the frontend bundle'; $failed = $true }
+          # The build script verified the frontend dist uses the same-origin API
+          # resolver (window.location.origin — no baked server-IP placeholder)
+          # before compiling the installer.
+          if ($m.same_origin_resolver) { Write-Output '[OK] frontend bundle derives the API base from window.location (no IP bake)' }
+          else { Write-Output '[MISSING] same-origin API resolver not found in the frontend bundle'; $failed = $true }
 
           # The offline app must ship the booking-widget bundle (served at
           # /widget/mylikita-booking-widget.min.js) AND the bundle must expose
@@ -263,11 +280,40 @@ jobs:
   # route must be reachable, claiming flips the facility to 'complete', and the
   # login/JWT check runs against the CLAIMED admin (phase 2 then proves the
   # claimed state survives a reinstall).
+  # Relay unit tests (mocked, no DB): the website-booking E2E suite and the
+  # QR/share-URL suite that decodes the hosted booking page's QR and poster
+  # and asserts WhatsApp/Telegram links encode the exact booking URL. These
+  # run on every tagged build — cheap (Node only) and independent of the
+  # Windows install matrix.
+  relay-unit-test:
+    name: Relay unit tests (mocked)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          token: ${{ secrets.MYLIKITA_PAT }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install relay deps
+        working-directory: backend/relay
+        run: npm ci --no-audit --no-fund
+
+      - name: Run relay unit tests (e2e-mocked + QR/share)
+        working-directory: backend/relay
+        run: npm test
+
   install-test:
     name: Install-test on Windows Server (headless)
     runs-on: windows-latest
     timeout-minutes: 60
-    needs: [build, smoke-test]   # strictly last: after the bundle is verified
+    needs: [build, smoke-test, relay-unit-test]   # strictly last: after the bundle is verified
 
     steps:
       # The Phase B4 relay test boots backend/relay from the repo, so the

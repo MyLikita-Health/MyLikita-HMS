@@ -27,7 +27,7 @@ needs no custom integration work.
 <div id="booking"></div>
 <script>
   MyLikitaBookingWidget.createBookingWidget(document.getElementById('booking'), {
-    relayUrl: 'https://api.mylikita.clinic',
+    relayUrl: 'https://api.mylikita.com',
     websiteKey: 'wk_9f2k…',        // public client id — not a secret
     facilityId: 'F1',
   });
@@ -53,7 +53,7 @@ component (all options are props, SSR-safe, imperative ref).
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `relayUrl` | string | — | **required** — relay base URL, e.g. `https://api.mylikita.clinic` |
+| `relayUrl` | string | — | **required** — relay base URL, e.g. `https://api.mylikita.com` |
 | `websiteKey` | string | — | **required** — your public client id (Bearer on every request) |
 | `facilityId` | string | — | **required** — the hospital's public facility id |
 | `providers` | array | `[]` | `[{ external_id, label }]` — shown as a "Preferred doctor" select; unmapped slugs simply arrive unassigned (never block on them). When provided, it wins and no fetch happens |
@@ -62,6 +62,7 @@ component (all options are props, SSR-safe, imperative ref).
 | `durationMins` | number | `30` | sent with the booking |
 | `pollIntervalMs` | number | `5000` | how often to poll the booking status |
 | `maxTries` | number | `12` | poll budget (~1 min at the default); the widget then shows "request received" |
+| `showBrand` | bool | `true` | set `false` to white-label the widget — hides the MyLikita mark + wordmark header (for premium-tier hosts). Everything else (title, form, status view) is untouched |
 | `theme` | object | defaults | see [Theming](#theming) |
 | `text` | object | defaults | i18n overrides for every label/message (see `src/widget.js` `DEFAULT_TEXT`) |
 | `externalRef` | fn | auto | override the idempotency-key generator |

@@ -146,7 +146,7 @@
     MyLikitaBookingWidget.createBookingWidget(document.getElementById('booking'), {
       // The in-page mock relay overrides fetch, so this URL is never actually
       // contacted — the widget still requires a non-empty relay URL.
-      relayUrl: 'https://api.mylikita.clinic',
+      relayUrl: 'https://api.mylikita.com',
       websiteKey: KEY,
       facilityId: FACILITY,
       providers: [{ external_id: 'dr-khalil', label: 'Dr. Khalil' }, { external_id: 'dr-amina', label: 'Dr. Amina' }],
@@ -158,7 +158,7 @@
     });
 
     const w2 = MyLikitaBookingWidget.createBookingWidget(document.getElementById('booking2'), {
-      relayUrl: 'https://api.mylikita.clinic',
+      relayUrl: 'https://api.mylikita.com',
       websiteKey: KEY,
       facilityId: FACILITY,
       // Phase C2/C3: no static providers — load them from the relay's

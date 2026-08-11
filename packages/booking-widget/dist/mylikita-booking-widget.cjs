@@ -21,10 +21,12 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 var index_exports = {};
 __export(index_exports, {
   DEFAULT_THEME: () => DEFAULT_THEME,
+  MYLIKITA_MARK_DATA_URI: () => MYLIKITA_MARK_DATA_URI,
   STATUS_COPY: () => STATUS_COPY,
   TERMINAL_STATUSES: () => TERMINAL_STATUSES,
   createBooking: () => createBooking,
   createBookingWidget: () => createBookingWidget,
+  createBrandHeader: () => createBrandHeader,
   fetchProviders: () => fetchProviders,
   fetchStatus: () => fetchStatus,
   newExternalRef: () => newExternalRef,
@@ -226,6 +228,27 @@ var STYLES = `
 .mylikita-widget *::before,
 .mylikita-widget *::after { box-sizing: border-box; }
 
+.mylikita-widget__brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--mlw-border);
+}
+.mylikita-widget__brand-mark {
+  display: block;
+  flex: 0 0 auto;
+  border-radius: 5px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, .12);
+}
+.mylikita-widget__brand-word {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: .3px;
+  color: var(--mlw-muted);
+}
+
 .mylikita-widget__title {
   font-size: 18px;
   font-weight: 700;
@@ -341,6 +364,24 @@ var STYLES = `
 .mylikita-widget__link-btn:hover { border-color: var(--mlw-primary); color: var(--mlw-primary); }
 `;
 
+// src/brand.js
+var MYLIKITA_MARK_DATA_URI = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0ODMgODA0IiB3aWR0aD0iNDgzIiBoZWlnaHQ9IjgwNCIgcm9sZT0iaW1nIiBhcmlhLWxhYmVsPSJNeUxpa2l0YSI+CiAgICA8cmVjdCB4PSIxNjEiIHk9IjAiIHdpZHRoPSIxNjEiIGhlaWdodD0iMTYxIiBmaWxsPSIjMDE2OURBIi8+CiAgICA8cmVjdCB4PSIwIiB5PSIxNjAiIHdpZHRoPSIxNjIiIGhlaWdodD0iMTYxIiBmaWxsPSIjMDE2OURBIi8+CiAgICA8cmVjdCB4PSIzMjEiIHk9IjE2MCIgd2lkdGg9IjE2MiIgaGVpZ2h0PSIxNjEiIGZpbGw9IiMwMTY5REEiLz4KICAgIDxyZWN0IHg9IjAiIHk9IjQ4MiIgd2lkdGg9IjE2MiIgaGVpZ2h0PSIxNjIiIGZpbGw9IiMwNDk4RkIiLz4KICAgIDxyZWN0IHg9IjMyMSIgeT0iNDgyIiB3aWR0aD0iMTYyIiBoZWlnaHQ9IjE2MiIgZmlsbD0iIzA0OThGQiIvPgogICAgPHJlY3QgeD0iMTYxIiB5PSI2NDMiIHdpZHRoPSIxNjEiIGhlaWdodD0iMTYxIiBmaWxsPSIjMDQ5OEZCIi8+Cjwvc3ZnPg==";
+function createBrandHeader() {
+  const header = document.createElement("div");
+  header.className = "mylikita-widget__brand";
+  const img = document.createElement("img");
+  img.className = "mylikita-widget__brand-mark";
+  img.src = MYLIKITA_MARK_DATA_URI;
+  img.alt = "MyLikita";
+  img.width = 24;
+  img.height = 24;
+  const word = document.createElement("span");
+  word.className = "mylikita-widget__brand-word";
+  word.textContent = "MyLikita";
+  header.append(img, word);
+  return header;
+}
+
 // src/widget.js
 var DEFAULT_TEXT = {
   title: "Book an appointment",
@@ -379,6 +420,9 @@ function createBookingWidget(element, options = {}) {
     // (GET /v1/providers) on mount and populate the doctor dropdown. The
     // static `providers` option, when given, always wins and skips the fetch.
     loadProviders: options.loadProviders === true && !(options.providers && options.providers.length),
+    // White-label flag: premium hosts can drop the MyLikita brand header.
+    // Defaults to true (brand shown); pass showBrand:false to hide it.
+    showBrand: options.showBrand !== false,
     pollIntervalMs: options.pollIntervalMs ?? 5e3,
     maxTries: options.maxTries ?? 12,
     text: { ...DEFAULT_TEXT, ...options.text || {} },
@@ -401,6 +445,7 @@ function createBookingWidget(element, options = {}) {
   let pollCtrl = null;
   const instanceId = Math.random().toString(36).slice(2, 8);
   const refKey = `mylikita_ref_${opts.facilityId}_${instanceId}`;
+  const brand = opts.showBrand ? createBrandHeader() : null;
   const form = el("form", { className: "mylikita-widget__form" });
   const title = el("h3", { className: "mylikita-widget__title", text: t.title });
   const subtitle = el("p", { className: "mylikita-widget__subtitle", text: t.subtitle });
@@ -574,7 +619,7 @@ function createBookingWidget(element, options = {}) {
     submitBtn.textContent = t.submit;
     datetime.input.min = toLocalInputValue(/* @__PURE__ */ new Date());
   }
-  root.replaceChildren(title, subtitle, form, statusView);
+  root.replaceChildren(brand, title, subtitle, form, statusView);
   let destroyProvidersFetch = null;
   if (opts.loadProviders) {
     const provCtrl = new AbortController();

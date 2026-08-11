@@ -15,6 +15,7 @@ var BookingWidget = forwardRef(function BookingWidget2(props, ref) {
     durationMins,
     pollIntervalMs,
     maxTries,
+    showBrand,
     theme,
     text,
     externalRef,
@@ -39,6 +40,7 @@ var BookingWidget = forwardRef(function BookingWidget2(props, ref) {
     durationMins,
     pollIntervalMs,
     maxTries,
+    showBrand,
     theme,
     text
   });
@@ -56,6 +58,7 @@ var BookingWidget = forwardRef(function BookingWidget2(props, ref) {
       durationMins,
       pollIntervalMs,
       maxTries,
+      showBrand,
       theme,
       text,
       // externalRef is a function — routed through a ref like the callbacks so

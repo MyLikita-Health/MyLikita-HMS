@@ -12,6 +12,7 @@ import { createBooking, fetchStatus, pollStatus, newExternalRef, fetchProviders 
 import { statusCopy, TERMINAL_STATUSES } from './state.js';
 import { resolveTheme } from './theme.js';
 import { STYLES as STYLES_CSS } from './styles.js';
+import { createBrandHeader } from './brand.js';
 
 const DEFAULT_TEXT = {
   title: 'Book an appointment',
@@ -53,6 +54,9 @@ export function createBookingWidget(element, options = {}) {
     // (GET /v1/providers) on mount and populate the doctor dropdown. The
     // static `providers` option, when given, always wins and skips the fetch.
     loadProviders: options.loadProviders === true && !(options.providers && options.providers.length),
+    // White-label flag: premium hosts can drop the MyLikita brand header.
+    // Defaults to true (brand shown); pass showBrand:false to hide it.
+    showBrand: options.showBrand !== false,
     pollIntervalMs: options.pollIntervalMs ?? 5000,
     maxTries: options.maxTries ?? 12,
     text: { ...DEFAULT_TEXT, ...(options.text || {}) },
@@ -84,6 +88,9 @@ export function createBookingWidget(element, options = {}) {
   const refKey = `mylikita_ref_${opts.facilityId}_${instanceId}`;
 
   // ── DOM construction ────────────────────────────────────────────────────
+  // The brand header is optional (white-label hosts pass showBrand:false);
+  // replaceChildren() ignores null, so the rest of the tree is unchanged.
+  const brand = opts.showBrand ? createBrandHeader() : null;
   const form = el('form', { className: 'mylikita-widget__form' });
 
   const title = el('h3', { className: 'mylikita-widget__title', text: t.title });
@@ -289,7 +296,7 @@ export function createBookingWidget(element, options = {}) {
     datetime.input.min = toLocalInputValue(new Date());
   }
 
-  root.replaceChildren(title, subtitle, form, statusView);
+  root.replaceChildren(brand, title, subtitle, form, statusView);
 
   // ── async provider load (Phase C2/C3) ────────────────────────────────────
   // When loadProviders is on, fetch the facility's mapped doctors and fill the

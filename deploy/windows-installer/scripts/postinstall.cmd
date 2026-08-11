@@ -193,10 +193,12 @@ rem mark the baseline migration as applied [mirrors entrypoint.sh]
     call :log "Database already has !TABLE_COUNT! tables - skipping import to preserve data."
 )
 
-:: ============================================== FRONTEND IP BAKE-IN ==========
-call :log "Baking server LAN IP (!SERVER_IP!) into frontend bundle..."
-powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "$ip='!SERVER_IP!'; Get-ChildItem -Path '!FRONTEND_DIST!' -Recurse -Filter *.js -ErrorAction SilentlyContinue | ForEach-Object { $c = Get-Content $_.FullName -Raw; if ($c.Contains('__MYLIKITA_SERVER_IP__')) { $c = $c.Replace('__MYLIKITA_SERVER_IP__', $ip); [System.IO.File]::WriteAllText($_.FullName, $c, (New-Object System.Text.UTF8Encoding($false))); Write-Output ('patched ' + $_.Name) } }" >> "%INSTALL_LOG%" 2>&1
+:: ================================ FRONTEND API BASE (no IP bake needed) ====
+:: The frontend now derives its API base from window.location (it is served by
+:: THIS backend), so no IP is baked into the bundle and an IP change needs no
+:: re-bake. The bundle is built with VITE_OFFLINE=true (see build-installer.bat)
+:: and talks to whatever origin it was loaded from.
+call :log "Frontend API base derives from window.location - no IP bake needed."
 
 :: ============================================== BACKEND DEPS (fallback) ======
 if exist "%BACKEND_DIR%\node_modules\express" (
@@ -240,7 +242,7 @@ call :log "Writing backend\.env..."
     echo.
     rem ---- Email via Resend [https://resend.com] - leave empty to disable ----
     echo RESEND_API_KEY=
-    echo EMAIL_FROM=MyLikita ^<hello@mylikita.clinic^>
+    echo EMAIL_FROM=MyLikita ^<hello@mylikita.com^>
     echo.
     echo PUPPETEER_SKIP_DOWNLOAD=true
 ) > "%BACKEND_DIR%\.env"
@@ -329,9 +331,16 @@ if errorlevel 1 (
 
 rem =================================================== FIREWALL ===============
 call :log "Opening firewall port !APP_PORT!..."
+set "FIREWALL_STATUS=not configured"
 netsh advfirewall firewall delete rule name="MyLikita" >nul 2>&1
 netsh advfirewall firewall add rule name="MyLikita" dir=in action=allow protocol=TCP localport=!APP_PORT! >nul
-call :log "Firewall rule added."
+if errorlevel 1 (
+    call :log "[WARN] Could not add the MyLikita firewall rule (may need elevation)."
+    set "FIREWALL_STATUS=blocked - the rule could not be added (run the installer as Administrator)"
+) else (
+    set "FIREWALL_STATUS=open (TCP port !APP_PORT! allowed)"
+    call :log "Firewall rule added."
+)
 
 rem ===================================================== START + CHECK ========
 call :log "Starting MyLikita service..."
@@ -356,21 +365,34 @@ call :log "Final health check: !HEALTH!"
 
 rem ===================================================== CREDENTIALS =========
 (
-    echo MyLikita is installed and running.
+    echo ============================================================
+    echo   MyLikita Hospital System - installation complete
+    echo ============================================================
     echo.
-    echo To open the app: double-click the ^"MyLikita Hospital System^" icon on
-    echo your Desktop ^(or Start Menu^). It opens in a clean app window - no
-    echo need to type the address.
+    echo STAFF ACCESS
+    echo   From this machine : http://localhost:!APP_PORT!/  ^(or the desktop icon^)
+    echo   From other PCs    : http://!SERVER_IP!:!APP_PORT!/
     echo.
-    echo Access from this machine : http://localhost:!APP_PORT!/
-    echo Access from the network   : http://!SERVER_IP!:!APP_PORT!/
+    echo Staff on the same network open the network URL above in any browser -
+    echo no per-PC setup is needed. To check the server is healthy, open:
+    echo   http://!SERVER_IP!:!APP_PORT!/health
+    echo and look for ^"status^": ^"ok^" and ^"db^": ^"up^" on the page.
     echo.
-    echo Database   : !DB_NAME!  ^(MySQL port !DB_PORT!^)
-    echo MySQL root password and JWT secret are stored in:
-    echo   %BACKEND_DIR%\.env
+    echo SERVER NETWORK STATUS
+    echo   Advertised IP : !SERVER_IP!
+    echo   LAN access    : on ^(staff can connect from other computers^)
+    echo   Firewall      : !FIREWALL_STATUS!
+    echo   App port      : !APP_PORT!
+    echo.
+    echo DATABASE
+    echo   Database      : !DB_NAME!  ^(MySQL port !DB_PORT!^)
+    echo   MySQL root password and JWT secret are stored in %BACKEND_DIR%\.env
     echo.
     echo Logs: %LOGS_DIR%\out.log  /  err.log
     echo Need help? Send %INSTALL_LOG% to MyLikita support.
+    echo.
+    echo ------------------------------------------------------------
+    echo MyLikita - https://mylikita.com - hospital management software
 ) > "%APP_ROOT%\CREDENTIALS.txt"
 
 call :log "============================================================"

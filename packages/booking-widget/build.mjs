@@ -46,3 +46,17 @@ const builds = [
 
 for (const b of builds) await esbuild.build(b);
 console.log('Built dist/ (iife, iife.min, esm, cjs)');
+
+// Sync the minified IIFE into the relay's static dir so the hosted booking
+// pages (/book/:slug) and the relay demo serve the SAME bundle the package
+// ships — the relay serves public/widget/ itself (never depends on a CDN).
+const relayWidgetDir = path.resolve(here, '../../backend/relay/public/widget');
+if (fs.existsSync(relayWidgetDir)) {
+  fs.copyFileSync(
+    path.join(out, 'mylikita-booking-widget.min.js'),
+    path.join(relayWidgetDir, 'mylikita-booking-widget.min.js'),
+  );
+  console.log('Synced dist/mylikita-booking-widget.min.js → backend/relay/public/widget/');
+} else {
+  console.log('(relay public/widget not found — skipped static sync)');
+}

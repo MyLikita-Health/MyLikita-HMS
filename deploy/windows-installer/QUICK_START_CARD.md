@@ -47,7 +47,8 @@
 - **Update:** run the new installer over the old one — **all data is kept**, never wiped.
 - **Can't connect from another PC?** Check the IP, the firewall rule *MyLikita*, and antivirus on port 46990.
 - **Server IP changed?** Right-click `C:\MyLikita\scripts\update-ip.cmd` → *Run as administrator*.
-- **App stuck/erroring?** `"C:\MyLikita\runtime\nssm\nssm.exe" restart MyLikita` (Admin prompt).
+- **App stuck/erroring?** `"C:\MyLikita\runtime\nssm\nssm.exe" restart MyLikita` (Admin prompt) — or in the app's Settings → Network tab, **Restart the MyLikita service**.
+- **Is the server healthy?** Open `http://<server-ip>:46990/health` — `"status": "ok"` and `"db": "up"` means it's running. If the response also shows `"degraded": true`, the install is **behind on migrations** (stale) — run the migration step or re-run setup (shown on the installer's final page too).
 
 ## Need help?
 

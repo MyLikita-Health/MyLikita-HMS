@@ -11,7 +11,7 @@ component:
 
 ```jsx
 <BookingWidget
-  relayUrl="https://api.mylikita.clinic"
+  relayUrl="https://api.mylikita.com"
   websiteKey="wk_9f2k…"   // public client id — not a secret
   facilityId="F1"
   loadProviders          // populate the doctor dropdown from the relay
@@ -46,7 +46,7 @@ export default function BookAppointment() {
   return (
     <BookingWidget
       ref={widgetRef}
-      relayUrl="https://api.mylikita.clinic"
+      relayUrl="https://api.mylikita.com"
       websiteKey="wk_9f2k…"
       facilityId="F1"
       providers={[{ external_id: 'dr-khalil', label: 'Dr. Khalil' }]}
@@ -68,7 +68,7 @@ for the full reference).
 
 | Prop | Type | Default | Description |
 |---|---|---|---|
-| `relayUrl` | string | — | **required** — relay base URL, e.g. `https://api.mylikita.clinic` |
+| `relayUrl` | string | — | **required** — relay base URL, e.g. `https://api.mylikita.com` |
 | `websiteKey` | string | — | **required** — your public client id (Bearer on every request) |
 | `facilityId` | string | — | **required** — the hospital's public facility id |
 | `providers` | array | `[]` | `[{ external_id, label }]` — static doctor list; wins over `loadProviders` |
@@ -125,7 +125,7 @@ Every colour, radius and font is a CSS custom property scoped to
 
 ```jsx
 <BookingWidget
-  relayUrl="https://api.mylikita.clinic"
+  relayUrl="https://api.mylikita.com"
   websiteKey="wk_…"
   facilityId="F1"
   theme={{ primary: '#e91e63', radius: 6, bg: '#fffaf5' }}
