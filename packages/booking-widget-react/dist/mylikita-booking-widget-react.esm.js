@@ -1,4 +1,4 @@
-/*! @mylikita/booking-widget-react v0.1.1 | MIT */
+/*! @mylikita/booking-widget-react v0.1.2 | MIT */
 
 // src/index.jsx
 import React, { forwardRef, useEffect, useImperativeHandle, useRef } from "react";

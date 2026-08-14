@@ -1,4 +1,4 @@
-/*! @mylikita/booking-widget v0.1.1 | MIT */
+/*! @mylikita/booking-widget v0.1.2 | MIT */
 
 // src/client.js
 async function createBooking({ relayUrl, websiteKey, payload, signal }) {

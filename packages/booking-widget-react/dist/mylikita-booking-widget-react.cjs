@@ -1,4 +1,4 @@
-/*! @mylikita/booking-widget-react v0.1.1 | MIT */
+/*! @mylikita/booking-widget-react v0.1.2 | MIT */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
