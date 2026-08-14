@@ -363,6 +363,22 @@ if errorlevel 1 (
 )
 call :log "Final health check: !HEALTH!"
 
+rem ================================================ SPA BOOT CHECK ============
+rem The v0.1.0 incident: the bundle parsed fine for vite/esbuild but threw a
+rem V8 parse-time SyntaxError in the browser, so the app served HTTP 200 with
+rem the right <title> yet rendered a blank white page. HTTP 200 + title can
+rem never catch that class - this check boots the REAL app in headless Chrome
+rem (or Edge, which ships with every Windows 10/11) and asserts React actually
+rem mounted the login form. Failing here is fatal: no COMPLETED marker means
+rem the install is reported as failed instead of shipping a blank page.
+call :log "Verifying the SPA actually renders (headless boot check)..."
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0spa-boot-check.ps1" -Url "http://localhost:!APP_PORT!/auth" -ServerPollSec 90
+if errorlevel 1 (
+    call :log "[ERROR] SPA boot check FAILED - the app served HTML but did not render (blank-page risk, the v0.1.0 class). See the [FAIL] lines above."
+    exit /b 1
+)
+call :log "SPA boot check passed - login page rendered by React."
+
 rem ===================================================== CREDENTIALS =========
 (
     echo ============================================================

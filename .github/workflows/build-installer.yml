@@ -411,6 +411,26 @@ jobs:
           }
           if (-not $ok) { throw 'http://localhost:46990/ did not return the MyLikita login page.' }
 
+      # =========================================================================
+      # SPA BOOT CHECK - closes the v0.1.0 gap. The v0.1.0 release served HTTP
+      # 200 with the right <title> but the bundle threw a V8 parse-time
+      # SyntaxError in the browser, so the app rendered a blank white page with
+      # zero React - invisible to any HTTP/title check. This step boots the
+      # REAL app in headless Chrome and asserts React actually mounted the
+      # login form (id=login-username / login-password in the rendered DOM).
+      # The same check also runs inside postinstall.cmd on every customer
+      # install, so a blank-page build can never be reported as installed.
+      # =========================================================================
+      - name: Verify the SPA actually renders (headless Chrome boot check)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $check = Join-Path $env:GITHUB_WORKSPACE 'deploy\windows-installer\scripts\spa-boot-check.ps1'
+          if (-not (Test-Path $check)) { throw "SPA boot check script missing: $check" }
+          & $check -Url 'http://localhost:46990/auth' -ServerPollSec 30
+          if ($LASTEXITCODE -ne 0) { throw 'SPA boot check failed - see [FAIL] lines above.' }
+          Write-Output '[OK] SPA boot check passed.'
+
       # The offline app must serve the booking-widget bundle it shipped
       # (frontend\dist\widget\*) at /widget/* — a clinic website embeds the
       # booking form straight from its own install, so this asserts both the
