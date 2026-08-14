@@ -85,6 +85,18 @@ jobs:
           if (-not (Test-Path $iscc)) { throw "ISCC.exe not found at $iscc" }
           Write-Output "Inno Setup $env:INNO_SETUP_VER installed: $iscc"
 
+      # Assemble the bundle: installs the frontend/backend deps, runs the Vite
+      # build, embeds the booking-widget dist, copies the runtimes from the
+      # warm cache, compiles the installer with ISCC, and writes
+      # bundle-manifest.json (component presence, same-origin API resolver,
+      # widget global + sha256, installer size). The favicon step below then
+      # byte-matches the produced exe.
+      - name: Build installer
+        shell: cmd
+        env:
+          MYLIKITA_VERSION: ${{ steps.version.outputs.VERSION }}
+        run: deploy\windows-installer\build-installer.bat
+
       # The SetupIconFile (mylikita.ico, copied by the bat from the built
       # frontend's favicon.ico) is embedded UNCOMPRESSED as RT_ICON resources
       # in the setup loader, so the icon bytes can be asserted directly inside
