@@ -39,10 +39,21 @@ function resolveMysql2() {
   try {
     return require('mysql2/promise');
   } catch (_) {
-    const backendModules = path.resolve(__dirname, '..', '..', '..', 'backend', 'node_modules');
-    const { createRequire } = require('module');
-    const req = createRequire(path.join(backendModules, 'noop.js'));
-    return req('mysql2/promise');
+    // Installed server (C:\MyLikita\scripts) needs ..\backend\node_modules;
+    // the source tree (deploy/windows-installer/scripts) needs ..\..\..\backend
+    // (i.e. backend/node_modules at the repo root). Try both layouts.
+    const candidates = [
+      path.resolve(__dirname, '..', 'backend', 'node_modules'),
+      path.resolve(__dirname, '..', '..', '..', 'backend', 'node_modules'),
+    ];
+    for (const dir of candidates) {
+      if (fs.existsSync(path.join(dir, 'mysql2'))) {
+        const { createRequire } = require('module');
+        const req = createRequire(path.join(dir, 'noop.js'));
+        return req('mysql2/promise');
+      }
+    }
+    throw new Error('Could not locate backend/node_modules (mysql2)');
   }
 }
 const mysql = resolveMysql2();
