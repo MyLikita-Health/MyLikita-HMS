@@ -20,6 +20,12 @@ set "BACKEND_DIR=%APP_ROOT%\backend"
 set "FRONTEND_DIST=%APP_ROOT%\frontend\dist"
 set "NODE_DIR=%APP_ROOT%\runtime\node"
 set "MYSQL_DIR=%APP_ROOT%\runtime\mysql"
+:: The runtime node dir must be on PATH. npm/npx and the .bin shims they
+:: spawn (sequelize-cli etc.) invoke bare `node`, which is NOT on PATH on a
+:: customer machine (CI runners only pass because setup-node adds it).
+:: Without this, `npx sequelize db:migrate` dies with "'node' is not
+:: recognized" and a fresh install silently misses all pending migrations.
+set "PATH=%NODE_DIR%;%PATH%"
 set "MYSQL_DATA=%APP_ROOT%\mysql-data"
 set "NSSM=%APP_ROOT%\runtime\nssm\nssm.exe"
 set "LOGS_DIR=%APP_ROOT%\logs"
@@ -163,19 +169,36 @@ if errorlevel 1 (
 )
 
 :: ------------------------------------------- import baseline schema ---------
-for /f %%c in ('"%MYSQL_DIR%\bin\mysql.exe" -u root -p!DB_PASS! --port=!DB_PORT! -N -s -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='!DB_NAME!'"') do set "TABLE_COUNT=%%c"
+:: The table count must NOT go through `for /f` here: the SQL contains
+:: single quotes (table_schema='!DB_NAME!') which terminate for /f's
+:: single-quoted command string early, so the command is truncated and the
+:: count comes back EMPTY - which silently skips the baseline import on
+:: every fresh install (empty DB, migrations fail, blank app). Read the
+:: count from a temp file instead; plain command lines handle the inner
+:: quotes fine.
+set "TABLE_COUNT="
+"%MYSQL_DIR%\bin\mysql.exe" -u root -p!DB_PASS! --port=!DB_PORT! -N -s -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='!DB_NAME!'" > "%TEMP%\mlk_tblcount.txt" 2>nul
+set /p TABLE_COUNT=<"%TEMP%\mlk_tblcount.txt"
 
 if "!TABLE_COUNT!"=="0" (
     call :log "Database is empty - importing baseline schema (prime-db.sql)..."
-    rem prime-db.sql is a MariaDB 10.4 dump; MySQL 8.0 needs it sanitized:
+    rem prime-db.sql is a MariaDB 10.4 dump; MySQL 8.0 needs it sanitized.
+    rem The work lives in scripts\sanitize-prime-db.ps1 (kept out of this .cmd
+    rem on purpose - a PowerShell -Command one-liner of this size mangles cmd's
+    rem quote pairing, and the fix needs real code, not regex golf):
     rem  - NO_AUTO_CREATE_USER was removed in MySQL 8, error 1231 if left in
-    rem    SET sql_mode statements - mirrors the sed in backend/entrypoint.sh
+    rem    SET sql_mode statements
     rem  - the dump's own CREATE DATABASE prime and USE prime lines would
     rem    land all data in the wrong schema; drop them and import below
     rem    targets !DB_NAME! explicitly
-    rem single line on purpose: caret continuations inside a block mangle
-    rem cmd's quote pairing [the build script hit the same trap]
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "$c = [IO.File]::ReadAllText('%SQL_FILE%'); $c = $c -replace 'NO_AUTO_CREATE_USER,', '' -replace ',NO_AUTO_CREATE_USER', '' -replace 'NO_AUTO_CREATE_USER', ''; $c = $c -replace '(?m)^CREATE DATABASE.*?;\r?\n', '' -replace '(?m)^USE `prime`;\r?\n', ''; [IO.File]::WriteAllText('%APP_ROOT%\database\prime-db.mysql8.sql', $c, (New-Object System.Text.UTF8Encoding($false)))" >> "%INSTALL_LOG%" 2>&1
+    rem  - STORED generated columns are dumped WITH their values (MariaDB
+    rem    behavior); MySQL 8 rejects those values (error 3105) and --force
+    rem    would silently drop every row. The sanitizer rewrites the
+    rem    inventory_stock INSERT with an explicit column list excluding the
+    rem    generated column so the seed stock rows import.
+    rem The script throws (exit 1) if the rewrite cannot be verified, so a
+    rem dump shape change fails loudly instead of silently losing data.
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0sanitize-prime-db.ps1" -Source "%SQL_FILE%" -Out "%APP_ROOT%\database\prime-db.mysql8.sql" >> "%INSTALL_LOG%" 2>&1
     if errorlevel 1 (
         call :log "[ERROR] Could not sanitize prime-db.sql for MySQL 8."
         exit /b 1
@@ -372,6 +395,14 @@ rem (or Edge, which ships with every Windows 10/11) and asserts React actually
 rem mounted the login form. Failing here is fatal: no COMPLETED marker means
 rem the install is reported as failed instead of shipping a blank page.
 call :log "Verifying the SPA actually renders (headless boot check)..."
+rem `powershell -File <missing.ps1>` exits 0 SILENTLY, so the file being
+rem absent would make this whole check a no-op that claims success. Fail
+rem loudly instead: the check must either run for real or fail the install.
+if not exist "%~dp0spa-boot-check.ps1" (
+    call :log "[ERROR] spa-boot-check.ps1 missing from the bundle - cannot verify the SPA renders."
+    call :log "        Refusing to claim a boot check that did not run (blank-page risk)."
+    exit /b 1
+)
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0spa-boot-check.ps1" -Url "http://localhost:!APP_PORT!/auth" -ServerPollSec 90
 if errorlevel 1 (
     call :log "[ERROR] SPA boot check FAILED - the app served HTML but did not render (blank-page risk, the v0.1.0 class). See the [FAIL] lines above."
