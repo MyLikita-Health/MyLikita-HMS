@@ -170,6 +170,10 @@ if exist ".env.production" (
 
 rem ckeditor4-react peers react ^18 but the app pins react ^16 - the lockfile
 rem resolved with lax peer rules, so a clean npm 7+ install needs legacy peers.
+rem Cypress is a devDependency used only by test:e2e - the installer never
+rem ships it, so skip its ~200 MB binary download (keeps the build fast and
+rem robust on throttled networks; the binary is fetched by the e2e job itself).
+set "CYPRESS_INSTALL_BINARY=0"
 call npm install --no-audit --no-fund --legacy-peer-deps
 if errorlevel 1 (
     echo  [ERROR] Frontend npm install failed.
@@ -290,6 +294,39 @@ if not exist "%DIST%\scripts" mkdir "%DIST%\scripts"
 copy /y "%HERE%scripts\*.cmd" "%DIST%\scripts\" >nul
 copy /y "%HERE%scripts\check-bundles.js" "%DIST%\scripts\" >nul
 copy /y "%HERE%scripts\launch-app.vbs" "%DIST%\scripts\" >nul 2>nul
+rem The SPA boot check and seed-access helper must ride inside the installer
+rem too: postinstall.cmd runs both, and `powershell -File missing.ps1` exits 0
+rem silently, so an unbundled check would claim "SPA boot check passed"
+rem without ever booting a browser (the exact blank-page class this guards).
+copy /y "%HERE%scripts\spa-boot-check.js" "%DIST%\scripts\" >nul
+copy /y "%HERE%scripts\spa-boot-check.ps1" "%DIST%\scripts\" >nul
+copy /y "%HERE%scripts\seed-access.js" "%DIST%\scripts\" >nul
+copy /y "%HERE%scripts\sanitize-prime-db.ps1" "%DIST%\scripts\" >nul
+
+rem -------------------------------------------- VC++ runtime DLLs ---------
+rem MySQL / Node / NSSM are MSVC builds and need the VC++ runtime
+rem (VCRUNTIME140.dll etc.). CI runners and most dev boxes have it, but a
+rem FRESH Windows machine often does not - and a missing runtime silently
+rem kills mysqld with 0xC0000135 (STATUS_DLL_NOT_FOUND), which surfaced as
+rem empty DB imports and the blank-page saga. The three redistributable DLLs
+rem live in vcrt\ and are COMMITTED to the repo (Microsoft permits
+rem redistribution with the app), so CI builds and local builds both ship
+rem them next to the exes - the installer is fully self-contained. The guard
+rem below stays as a safety net: if vcrt\ ever goes missing, the
+rem bundle-manifest keys written further down turn false and the CI smoke
+rem test fails the build instead of shipping an installer without a runtime.
+if exist "%HERE%vcrt\vcruntime140.dll" (
+    echo  [OK] Bundling VC++ runtime DLLs from %HERE%vcrt
+    copy /y "%HERE%vcrt\vcruntime140.dll"   "%RUNTIME%\mysql\bin\" >nul
+    copy /y "%HERE%vcrt\vcruntime140_1.dll" "%RUNTIME%\mysql\bin\" >nul
+    copy /y "%HERE%vcrt\msvcp140.dll"       "%RUNTIME%\mysql\bin\" >nul
+    copy /y "%HERE%vcrt\vcruntime140.dll"   "%RUNTIME%\node\" >nul
+    copy /y "%HERE%vcrt\vcruntime140_1.dll" "%RUNTIME%\node\" >nul
+    copy /y "%HERE%vcrt\msvcp140.dll"       "%RUNTIME%\node\" >nul
+    copy /y "%HERE%vcrt\vcruntime140.dll"   "%RUNTIME%\nssm\" >nul
+    copy /y "%HERE%vcrt\vcruntime140_1.dll" "%RUNTIME%\nssm\" >nul
+    copy /y "%HERE%vcrt\msvcp140.dll"       "%RUNTIME%\nssm\" >nul
+)
 
 copy /y "%HERE%MyLikita-Setup.iss" "%DIST%\MyLikita-Setup.iss" >nul
 
@@ -312,7 +349,7 @@ popd
 ::: releases). Every entry is a Test-Path on the ACTUAL assembled bundle.
 echo.
 echo  Writing bundle manifest...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$m=@{}; $f=@{ 'backend\app.js'='%DIST%\backend\app.js'; 'backend\express'='%DIST%\backend\node_modules\express\package.json'; 'frontend\index.html'='%DIST%\frontend\dist\index.html'; 'runtime\node.exe'='%DIST%\runtime\node\node.exe'; 'runtime\mysqld.exe'='%DIST%\runtime\mysql\bin\mysqld.exe'; 'runtime\nssm.exe'='%DIST%\runtime\nssm\nssm.exe'; 'database\prime-db.sql'='%DIST%\database\prime-db.sql'; 'scripts\postinstall.cmd'='%DIST%\scripts\postinstall.cmd'; 'widget\mylikita-booking-widget.min.js'='%DIST%\frontend\dist\widget\mylikita-booking-widget.min.js' }; foreach ($k in $f.Keys) { $m[$k]=[bool](Test-Path $f[$k]) }; $so=Get-ChildItem '%DIST%\frontend\dist' -Recurse -Filter *.js -ErrorAction SilentlyContinue | Select-String -Pattern 'location.origin' -List -SimpleMatch | Select-Object -First 1; $m['same_origin_resolver']=[bool]$so; $wg=Get-Content '%DIST%\frontend\dist\widget\mylikita-booking-widget.min.js' -Raw -ErrorAction SilentlyContinue; $m['widget_global_present']=[bool]($wg -match 'MyLikitaBookingWidget'); $wh=Get-FileHash '%DIST%\frontend\dist\widget\mylikita-booking-widget.min.js' -Algorithm SHA256 -ErrorAction SilentlyContinue; $m['widget_sha256']=if($wh){$wh.Hash}else{$null}; $exe=Get-Item '%DIST%\output\MyLikita-Setup-%VERSION%.exe' -ErrorAction SilentlyContinue; $m['installer_mb']=[math]::Round($exe.Length/1MB); $m['version']='%VERSION%'; $m | ConvertTo-Json | Set-Content '%DIST%\bundle-manifest.json' -Encoding UTF8"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$m=@{}; $f=@{ 'backend\app.js'='%DIST%\backend\app.js'; 'backend\express'='%DIST%\backend\node_modules\express\package.json'; 'frontend\index.html'='%DIST%\frontend\dist\index.html'; 'runtime\node.exe'='%DIST%\runtime\node\node.exe'; 'runtime\mysqld.exe'='%DIST%\runtime\mysql\bin\mysqld.exe'; 'runtime\nssm.exe'='%DIST%\runtime\nssm\nssm.exe'; 'database\prime-db.sql'='%DIST%\database\prime-db.sql'; 'scripts\postinstall.cmd'='%DIST%\scripts\postinstall.cmd'; 'scripts\sanitize-prime-db.ps1'='%DIST%\scripts\sanitize-prime-db.ps1'; 'runtime\mysql\bin\vcruntime140.dll'='%DIST%\runtime\mysql\bin\vcruntime140.dll'; 'runtime\mysql\bin\vcruntime140_1.dll'='%DIST%\runtime\mysql\bin\vcruntime140_1.dll'; 'runtime\mysql\bin\msvcp140.dll'='%DIST%\runtime\mysql\bin\msvcp140.dll'; 'widget\mylikita-booking-widget.min.js'='%DIST%\frontend\dist\widget\mylikita-booking-widget.min.js' }; foreach ($k in $f.Keys) { $m[$k]=[bool](Test-Path $f[$k]) }; $so=Get-ChildItem '%DIST%\frontend\dist' -Recurse -Filter *.js -ErrorAction SilentlyContinue | Select-String -Pattern 'location.origin' -List -SimpleMatch | Select-Object -First 1; $m['same_origin_resolver']=[bool]$so; $wg=Get-Content '%DIST%\frontend\dist\widget\mylikita-booking-widget.min.js' -Raw -ErrorAction SilentlyContinue; $m['widget_global_present']=[bool]($wg -match 'MyLikitaBookingWidget'); $wh=Get-FileHash '%DIST%\frontend\dist\widget\mylikita-booking-widget.min.js' -Algorithm SHA256 -ErrorAction SilentlyContinue; $m['widget_sha256']=if($wh){$wh.Hash}else{$null}; $exe=Get-Item '%DIST%\output\MyLikita-Setup-%VERSION%.exe' -ErrorAction SilentlyContinue; $m['installer_mb']=[math]::Round($exe.Length/1MB); $m['version']='%VERSION%'; $m | ConvertTo-Json | Set-Content '%DIST%\bundle-manifest.json' -Encoding UTF8"
 if errorlevel 1 (
     echo  [ERROR] Could not write the bundle manifest.
     exit /b 1

@@ -29,8 +29,12 @@ DisableProgramGroupPage=yes
 DisableReadyPage=no
 DisableFinishedPage=no
 PrivilegesRequired=admin
-ArchitecturesAllowed=x64
-ArchitecturesInstallIn64BitMode=x64
+; x64compatible (not plain x64) also admits ARM64 Windows, where the bundled
+; x64 Node/MySQL/NSSM binaries run under the built-in x64 emulation - the app
+; works there, and it lets QA run the install test on Apple-Silicon VMs. On
+; plain x64 machines the behavior is identical to x64.
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir=output
 OutputBaseFilename=MyLikita-Setup-{#MyAppVersion}
 Compression=lzma2/max

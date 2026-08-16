@@ -185,7 +185,14 @@ jobs:
           Write-Output "Bundle manifest: version=$($m.version) installer_mb=$($m.installer_mb)"
 
           $failed = $false
-          $required = @('backend\app.js','backend\express','frontend\index.html','runtime\node.exe','runtime\mysqld.exe','runtime\nssm.exe','database\prime-db.sql','scripts\postinstall.cmd','widget\mylikita-booking-widget.min.js')
+          # The VC++ runtime DLLs (vcruntime140.dll / vcruntime140_1.dll /
+          # msvcp140.dll) are bundled next to every exe - a fresh machine
+          # without the MSVC runtime dies with 0xC0000135 (STATUS_DLL_NOT_FOUND)
+          # and mysqld never starts (the blank-page / empty-DB class). The bat
+          # writes these keys from the ACTUAL assembled bundle, so a build from
+          # a checkout missing vcrt\ fails here instead of shipping an
+          # installer that cannot start its own database.
+          $required = @('backend\app.js','backend\express','frontend\index.html','runtime\node.exe','runtime\mysqld.exe','runtime\nssm.exe','database\prime-db.sql','scripts\postinstall.cmd','runtime\mysql\bin\vcruntime140.dll','runtime\mysql\bin\vcruntime140_1.dll','runtime\mysql\bin\msvcp140.dll','widget\mylikita-booking-widget.min.js')
           foreach ($name in $required) {
             if ($m.($name)) { Write-Output "[OK] $name" }
             else { Write-Output "[MISSING] $name"; $failed = $true }
