@@ -23,7 +23,7 @@ set "CACHE=%DIST%\cache"
 set "RUNTIME=%DIST%\runtime"
 
 :: ---------------------------------------------------------- configuration --
-set "VERSION=1.0.0"
+set "VERSION=0.1.4"
 if defined MYLIKITA_VERSION set "VERSION=%MYLIKITA_VERSION%"
 :: Node 20.19+ is required by the frontend's Vite 7 build (engines: ^20.19.0 || >=22.12.0)
 set "NODE_VERSION=v20.19.0"
