@@ -62,7 +62,7 @@ foreach ($expected in $ExpectedIcoPaths) {
 $ico = [System.IO.File]::ReadAllBytes($IcoPath)
 $count = [BitConverter]::ToUInt16($ico, 4)
 if ($count -lt 1) { Fail "$IcoPath declares no images" }
-Write-Output "Icon images in `${IcoPath}: $count"
+Write-Output "Icon images in ${IcoPath}: $count"
 
 $blobs = @()
 for ($i = 0; $i -lt $count; $i++) {
@@ -107,3 +107,4 @@ if ($found -ne $blobs.Count) {
 }
 Write-Output "[OK] Installer embeds all $found icon image(s) byte-identical to $IcoPath ($exeBytes bytes scanned)."
 Write-Output 'ICON VERIFICATION PASSED'
+exit 0

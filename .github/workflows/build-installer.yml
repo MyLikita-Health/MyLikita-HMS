@@ -117,7 +117,8 @@ jobs:
             -ExePath $exe.FullName `
             -IcoPath (Join-Path $dist 'mylikita.ico') `
             -ExpectedIcoPaths (Join-Path $dist 'frontend\dist\icons\favicon.ico'), 'frontend\public\icons\favicon.ico'
-          if ($LASTEXITCODE -ne 0) { throw 'Icon verification failed — see [FAIL]/[MISSING] lines above.' }
+          if ($LASTEXITCODE -ne 0) { throw "Icon verification failed (exit code $LASTEXITCODE) — see [FAIL]/[MISSING] lines above." }
+          Write-Output 'Icon verification step passed.'
 
       # Uploaded so the smoke-test job can download and inspect it. The
       # release publish happens only after the smoke test passes.
