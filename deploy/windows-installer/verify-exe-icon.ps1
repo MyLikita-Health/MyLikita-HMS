@@ -107,3 +107,4 @@ if ($found -ne $blobs.Count) {
 }
 Write-Output "[OK] Installer embeds all $found icon image(s) byte-identical to ${IcoPath} ($exeBytes bytes scanned)."
 Write-Output 'ICON VERIFICATION PASSED'
+exit 0
