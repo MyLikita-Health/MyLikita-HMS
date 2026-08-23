@@ -1,6 +1,6 @@
 {
   "name": "@mylikita/booking-widget",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "description": "Drop-in appointment booking widget for MyLikita hospital websites. Submits bookings through the MyLikita relay (POST /v1/bookings) and polls status (GET /v1/bookings/:ref). Themeable via CSS variables.",
   "type": "module",
   "main": "dist/mylikita-booking-widget.cjs",

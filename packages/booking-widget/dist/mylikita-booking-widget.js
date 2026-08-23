@@ -1,4 +1,4 @@
-/*! @mylikita/booking-widget v0.1.10 | MIT */
+/*! @mylikita/booking-widget v0.1.11 | MIT */
 var MyLikitaBookingWidget = (() => {
   var __defProp = Object.defineProperty;
   var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
