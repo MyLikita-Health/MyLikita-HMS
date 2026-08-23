@@ -1,6 +1,6 @@
 {
   "name": "@mylikita/booking-widget-react",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "React component wrapper for @mylikita/booking-widget — drop <BookingWidget relayUrl=… websiteKey=… facilityId=… /> into any React hospital website and get appointment booking that syncs through the MyLikita relay.",
   "type": "module",
   "main": "dist/mylikita-booking-widget-react.cjs",
@@ -43,7 +43,7 @@
     "react-dom": ">=16.8.0"
   },
   "dependencies": {
-    "@mylikita/booking-widget": "0.1.9"
+    "@mylikita/booking-widget": "0.1.10"
   },
   "devDependencies": {
     "esbuild": "^0.24.0",
