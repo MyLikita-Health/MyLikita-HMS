@@ -1051,6 +1051,11 @@ jobs:
       # A service runs as SYSTEM, fully detached, and reads its config from a
       # .env file written by this step (the relay already loads dotenv).
       # =========================================================================
+
+      - name: B4 - Install relay deps
+        run: npm ci --no-audit --no-fund
+        working-directory: backend/relay
+
       - name: B4 - Boot the cloud relay against the installed MySQL
         shell: pwsh
         run: |
