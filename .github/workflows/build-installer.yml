@@ -592,7 +592,13 @@ jobs:
           if (-not $conf.success -or $conf.data.status -ne 'confirmed') { throw "Confirm failed: $($conf | ConvertTo-Json -Depth 4)" }
           Write-Output '[OK] Appointment confirmed via PUT /appointments/:id/status.'
 
-          $notifCount = (& $mysql -u root "--password=$pw" "--port=$port" -N -s -e "SELECT COUNT(*) FROM sys_notifications WHERE facilityId='$facilityId' AND event_type='appointment_confirmed' AND created_at >= NOW() - INTERVAL 10 MINUTE" $db).Trim()
+          # The notification fires asynchronously; poll for up to 30 seconds.
+          $notifCount = '0'
+          for ($i = 0; $i -lt 10; $i++) {
+            $notifCount = (& $mysql -u root "--password=$pw" "--port=$port" -N -s -e "SELECT COUNT(*) FROM sys_notifications WHERE facilityId='$facilityId' AND event_type='appointment_confirmed' AND created_at >= NOW() - INTERVAL 10 MINUTE" $db).Trim()
+            if ([int]$notifCount -ge 1) { break }
+            Start-Sleep -Seconds 3
+          }
           if ([int]$notifCount -lt 1) { throw "No appointment_confirmed row landed in sys_notifications (count=$notifCount) - the lifecycle notification did not fire." }
           $title = (& $mysql -u root "--password=$pw" "--port=$port" -N -s -e "SELECT title FROM sys_notifications WHERE facilityId='$facilityId' AND event_type='appointment_confirmed' ORDER BY id DESC LIMIT 1" $db).Trim()
           Write-Output "[OK] appointment_confirmed notification landed in sys_notifications (count=$notifCount, title='$title')."
