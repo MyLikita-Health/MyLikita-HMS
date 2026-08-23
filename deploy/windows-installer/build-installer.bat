@@ -215,23 +215,16 @@ rem Embed the @mylikita/booking-widget dist under frontend\dist\widget so the
 rem offline app serves it at /widget/* (the backend statically serves the
 rem whole frontend/dist tree). A clinic website can then embed the booking
 rem form straight from its own install - no npm registry or CDN needed.
-rem Build the widget from source to ensure the dist matches what npm publish
-rem produces (committed dist may differ due to local vs CI esbuild versions).
-cd "%ROOT%\packages\booking-widget"
-call "%ROOT%\runtime\node\node.exe" build.mjs
-if errorlevel 1 (
-    echo  [ERROR] booking-widget build failed.
-    exit /b 1
-)
-cd "%ROOT%"
+rem The widget dist is committed to the repo, so this is a plain copy;
+rem if it is ever missing the build MUST fail loudly.
 if not exist "%DIST%\frontend\dist\widget" mkdir "%DIST%\frontend\dist\widget"
 xcopy /e /i /y /q "%ROOT%\packages\booking-widget\dist\*" "%DIST%\frontend\dist\widget\" >nul
 if not exist "%DIST%\frontend\dist\widget\mylikita-booking-widget.min.js" (
-    echo  [ERROR] booking-widget bundle missing after build - expected:
+    echo  [ERROR] booking-widget bundle missing - expected:
     echo          %DIST%\frontend\dist\widget\mylikita-booking-widget.min.js
     exit /b 1
 )
-echo  [OK] Booking widget built and bundled (frontend\dist\widget).
+echo  [OK] Booking widget bundled (frontend\dist\widget).
 
 :: ----------------------------------------------- bundle the backend --------
 echo.
