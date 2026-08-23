@@ -258,6 +258,7 @@ call :log ".env written."
 call :log "Running pending database migrations..."
 pushd "%BACKEND_DIR%"
 set "NODE_ENV=development"
+set "PATH=%NODE_DIR%;%PATH%"
 call "%NODE_DIR%\npx.cmd" --no-install sequelize db:migrate >> "%INSTALL_LOG%" 2>&1
 if errorlevel 1 (
     call :log "[ERROR] Database migrations failed. See log above."
