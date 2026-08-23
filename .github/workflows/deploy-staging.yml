@@ -1,0 +1,314 @@
+name: Deploy to Staging
+
+# Deploys the latest frontend and backend to the staging server when code
+# is pushed to main.  Builds Docker images, pushes them to GitHub Container
+# Registry (ghcr.io), then SSHs into the staging server to pull and restart.
+#
+# Required repository secrets:
+#   STAGING_HOST       – IP or hostname of the staging server
+#   STAGING_SSH_KEY    – private SSH key (Ed25519 or RSA)
+#
+# Optional repository variables (Settings → Variables → Actions):
+#   STAGING_SSH_USER   – SSH username (default: deploy)
+#   STAGING_DB_PASSWORD – MySQL root password (auto-generated on first deploy)
+#   STAGING_PORT       – app port (default: 46990)
+#   STAGING_DOMAIN     – public hostname (optional)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      skip_tests:
+        description: "Skip smoke tests before deploy"
+        required: false
+        default: "false"
+        type: boolean
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  FRONTEND_IMAGE: ghcr.io/${{ github.repository_owner }}/mylikita-frontend
+  BACKEND_IMAGE: ghcr.io/${{ github.repository_owner }}/mylikita-backend
+
+jobs:
+  # ── Build + push Docker images ────────────────────────────────────────────
+  build:
+    name: Build Docker images
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          token: ${{ secrets.MYLIKITA_PAT }}
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: frontend
+          push: true
+          tags: |
+            ${{ env.FRONTEND_IMAGE }}:latest
+            ${{ env.FRONTEND_IMAGE }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push backend
+        uses: docker/build-push-action@v5
+        with:
+          context: backend
+          push: true
+          tags: |
+            ${{ env.BACKEND_IMAGE }}:latest
+            ${{ env.BACKEND_IMAGE }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ── Deploy to staging server ──────────────────────────────────────────────
+  deploy:
+    name: Deploy to staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: build
+    environment:
+      name: staging
+      url: http://${{ secrets.STAGING_HOST }}:${{ vars.STAGING_PORT || '46990' }}
+
+    steps:
+      - name: Write docker-compose template
+        run: |
+          mkdir -p /tmp/staging-deploy
+          cat > /tmp/staging-deploy/docker-compose.yml << 'EOF'
+          services:
+            mysql:
+              image: mysql:8.0
+              restart: unless-stopped
+              command: >
+                --default-authentication-plugin=mysql_native_password
+                --character-set-server=utf8mb4
+                --collation-server=utf8mb4_unicode_ci
+              environment:
+                MYSQL_ROOT_PASSWORD_FILE: /run/secrets/db_root_password
+                MYSQL_DATABASE: mylikita_staging
+                MYSQL_USER: mylikita
+                MYSQL_PASSWORD_FILE: /run/secrets/db_user_password
+              volumes:
+                - mysql_data:/var/lib/mysql
+              healthcheck:
+                test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+                interval: 10s
+                timeout: 5s
+                retries: 10
+              secrets:
+                - db_root_password
+                - db_user_password
+              networks:
+                - backend
+
+            backend:
+              image: BACKEND_IMAGE_PLACEHOLDER
+              restart: unless-stopped
+              environment:
+                NODE_ENV: production
+                DB_HOST: mysql
+                DB_PORT: "3306"
+                DB_USER: mylikita
+                DB_PASSWORD: mylikita_staging_pass
+                DB_NAME: mylikita_staging
+                PORT: "46990"
+                SERVE_FRONTEND: "false"
+              ports:
+                - APP_PORT_PLACEHOLDER:46990
+              depends_on:
+                mysql:
+                  condition: service_healthy
+              networks:
+                - backend
+
+            frontend:
+              image: FRONTEND_IMAGE_PLACEHOLDER
+              restart: unless-stopped
+              ports:
+                - "80:80"
+              depends_on:
+                - backend
+              networks:
+                - backend
+
+          secrets:
+            db_root_password:
+              file: ./secrets/db_root_password
+            db_user_password:
+              file: ./secrets/db_user_password
+
+          volumes:
+            mysql_data:
+
+          networks:
+            backend:
+          EOF
+        shell: bash
+
+      - name: Substitute image tags
+        run: |
+          cd /tmp/staging-deploy
+          sed -i "s|BACKEND_IMAGE_PLACEHOLDER|${{ env.BACKEND_IMAGE }}:latest|g" docker-compose.yml
+          sed -i "s|FRONTEND_IMAGE_PLACEHOLDER|${{ env.FRONTEND_IMAGE }}:latest|g" docker-compose.yml
+          sed -i "s|APP_PORT_PLACEHOLDER|${{ vars.STAGING_PORT || '46990' }}|g" docker-compose.yml
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ vars.STAGING_SSH_USER || 'deploy' }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          script_stop: true
+          script: |
+            set -euo pipefail
+
+            echo "═══ Deploying MyLikita staging ($(date)) ═══"
+
+            # ── Ensure deploy dir exists ────────────────────────────────
+            mkdir -p /opt/mylikita-staging/secrets
+            cd /opt/mylikita-staging
+
+            # ── Generate DB password on first deploy ─────────────────────
+            if [ ! -f .db_password ]; then
+              openssl rand -hex 16 > .db_password
+              chmod 600 .db_password
+              echo "Generated new DB password"
+            fi
+            DB_PASS=$(cat .db_password)
+
+            # ── Write secrets ────────────────────────────────────────────
+            echo "$DB_PASS" > secrets/db_root_password
+            echo "$DB_PASS" > secrets/db_user_password
+            chmod 600 secrets/*
+
+            # ── Pull images ─────────────────────────────────────────────
+            echo "Pulling Docker images..."
+            docker pull ${{ env.FRONTEND_IMAGE }}:latest
+            docker pull ${{ env.BACKEND_IMAGE }}:latest
+
+            echo "Images pulled successfully."
+
+      - name: Upload docker-compose and restart
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ vars.STAGING_SSH_USER || 'deploy' }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          source: /tmp/staging-deploy/docker-compose.yml
+          target: /opt/mylikita-staging/docker-compose.yml
+
+      - name: Restart services
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ vars.STAGING_SSH_USER || 'deploy' }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          script_stop: true
+          script: |
+            set -euo pipefail
+            cd /opt/mylikita-staging
+
+            echo "Restarting services..."
+            docker compose down --remove-orphans 2>/dev/null || true
+            docker compose up -d
+
+            echo "Waiting for backend to be healthy..."
+            HEALTH_PORT=${{ vars.STAGING_PORT || '46990' }}
+            for i in $(seq 1 30); do
+              if docker compose exec -T backend wget -qO- "http://localhost:$HEALTH_PORT/" > /dev/null 2>&1; then
+                echo "✓ Backend is healthy on port $HEALTH_PORT"
+                break
+              fi
+              if [ "$i" -eq 30 ]; then
+                echo "✗ Backend health check failed"
+                docker compose logs backend --tail=50
+                exit 1
+              fi
+              sleep 2
+            done
+
+            # ── Summary ─────────────────────────────────────────────────
+            echo ""
+            echo "═══════════════════════════════════════════════════"
+            echo " Staging deploy complete"
+            echo " App:   http://${{ secrets.STAGING_HOST }}:$HEALTH_PORT"
+            echo " MySQL: localhost:3306 (user: mylikita)"
+            echo " Commit: ${{ github.sha }}"
+            echo "═══════════════════════════════════════════════════"
+
+      - name: Post-deploy smoke test
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ vars.STAGING_SSH_USER || 'deploy' }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            cd /opt/mylikita-staging
+
+            echo "Running smoke test..."
+            HEALTH_PORT=${{ vars.STAGING_PORT || '46990' }}
+
+            # Test backend responds
+            if docker compose exec -T backend wget -qO- "http://localhost:$HEALTH_PORT/" > /dev/null 2>&1; then
+              echo "✓ Backend is responding on port $HEALTH_PORT"
+            else
+              echo "✗ Backend not responding"
+              exit 1
+            fi
+
+            # Test MySQL
+            DB_PASS=$(cat .db_password)
+            if docker compose exec -T mysql mysql -u root -p"$DB_PASS" -e "SELECT 1" > /dev/null 2>&1; then
+              echo "✓ MySQL is accessible"
+            else
+              echo "✗ MySQL check failed"
+              exit 1
+            fi
+
+            # Test frontend
+            if docker compose exec -T frontend wget -qO- http://localhost:80/ > /dev/null 2>&1; then
+              echo "✓ Frontend is serving"
+            else
+              echo "✗ Frontend check failed"
+              exit 1
+            fi
+
+            echo "All smoke tests passed ✓"
+
+      - name: Publish deployment summary
+        if: always()
+        run: |
+          echo "## 🚀 Staging Deployment" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Detail | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Commit** | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Triggered by** | ${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Frontend image** | \`${{ env.FRONTEND_IMAGE }}:latest\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Backend image** | \`${{ env.BACKEND_IMAGE }}:latest\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Server** | \`${{ secrets.STAGING_HOST }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **URL** | http://${{ secrets.STAGING_HOST }}:${{ vars.STAGING_PORT || '46990' }} |" >> $GITHUB_STEP_SUMMARY
