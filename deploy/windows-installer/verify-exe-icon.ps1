@@ -53,16 +53,16 @@ foreach ($expected in $ExpectedIcoPaths) {
   $a = (Get-FileHash -LiteralPath $IcoPath -Algorithm SHA256).Hash
   $b = (Get-FileHash -LiteralPath $expected -Algorithm SHA256).Hash
   if ($a -ne $b) {
-    Fail "Icon chain drift: $IcoPath (sha256 $a) differs from $expected (sha256 $b) — the .iss embeds a different icon than the repo's favicon."
+    Fail "Icon chain drift: ${IcoPath} (sha256 $a) differs from $expected (sha256 $b) — the .iss embeds a different icon than the repo's favicon."
   }
-  Write-Output "[OK] $IcoPath is byte-identical to $expected"
+  Write-Output "[OK] ${IcoPath} is byte-identical to $expected"
 }
 
 # ── 2. Parse the ICO (ICONDIR) and extract its embedded images ──────────────
 $ico = [System.IO.File]::ReadAllBytes($IcoPath)
 $count = [BitConverter]::ToUInt16($ico, 4)
-if ($count -lt 1) { Fail "$IcoPath declares no images" }
-Write-Output "Icon images in $IcoPath: $count"
+if ($count -lt 1) { Fail "${IcoPath} declares no images" }
+Write-Output "Icon images in ${IcoPath}: $count"
 
 $blobs = @()
 for ($i = 0; $i -lt $count; $i++) {
@@ -105,5 +105,5 @@ $exe = $null
 if ($found -ne $blobs.Count) {
   Fail "$found/$($blobs.Count) icon images embedded — the installer does NOT carry the expected favicon."
 }
-Write-Output "[OK] Installer embeds all $found icon image(s) byte-identical to $IcoPath ($exeBytes bytes scanned)."
+Write-Output "[OK] Installer embeds all $found icon image(s) byte-identical to ${IcoPath} ($exeBytes bytes scanned)."
 Write-Output 'ICON VERIFICATION PASSED'
