@@ -360,17 +360,57 @@ jobs:
           $setupArgs = @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-',"/LOG=$setupLog")
           $p = Start-Process -FilePath $exe.FullName -ArgumentList $setupArgs -Wait -PassThru
           Write-Output "Installer exit code: $($p.ExitCode)"
+          # Dump the Inno Setup log to help diagnose post-install issues
+          if (Test-Path $setupLog) {
+            Write-Output '--- Inno Setup log (tail 80 lines) ---'
+            Get-Content $setupLog -Tail 80 | Write-Output
+          } else {
+            Write-Output '--- Inno Setup log not found at $setupLog ---'
+          }
+          # Check what exists on disk after install
+          if (Test-Path 'C:\MyLikita') {
+            Write-Output '--- C:\MyLikita exists ---'
+            Get-ChildItem 'C:\MyLikita' | ForEach-Object { Write-Output "  $($_.Name)" }
+            if (Test-Path 'C:\MyLikita\logs') {
+              Write-Output '--- C:\MyLikita\logs contents ---'
+              Get-ChildItem 'C:\MyLikita\logs' | ForEach-Object { Write-Output "  $($_.Name) ($($_.Length) bytes)" }
+            } else {
+              Write-Output '--- C:\MyLikita\logs does NOT exist ---'
+            }
+          } else {
+            Write-Output '--- C:\MyLikita does NOT exist ---'
+          }
 
       - name: Verify install completed (install.log marker)
         shell: pwsh
         run: |
-          $ErrorActionPreference = 'Stop'
+          # Capture as much diagnostic info as possible even on failure
+          $setupLog = Join-Path $env:TEMP 'mylikita-setup.log'
+          if (Test-Path $setupLog) {
+            Write-Output '--- Inno Setup log (tail 50) ---'
+            Get-Content $setupLog -Tail 50 | Write-Output
+          }
+          $diagDir = 'C:\MyLikita\logs'
+          if (Test-Path $diagDir) {
+            Write-Output '--- C:\MyLikita\logs contents ---'
+            Get-ChildItem $diagDir | ForEach-Object { Write-Output "  $($_.Name) ($($_.Length) bytes)" }
+          } else {
+            Write-Output '--- C:\MyLikita\logs directory does NOT exist ---'
+            if (Test-Path 'C:\MyLikita') {
+              Write-Output '--- C:\MyLikita directory exists, contents: ---'
+              Get-ChildItem 'C:\MyLikita' | ForEach-Object { Write-Output "  $($_.Name)" }
+            } else {
+              Write-Output '--- C:\MyLikita directory does NOT exist (installer may have failed to extract) ---'
+            }
+          }
           $log = 'C:\MyLikita\logs\install.log'
-          if (-not (Test-Path $log)) { throw "install.log not found at $log - the post-install script did not run." }
-          $tail = Get-Content $log -Tail 20
-          Write-Output '--- install.log tail ---'
-          $tail | Write-Output
-          if (-not ($tail -match 'post-install COMPLETED')) { throw 'install.log does not end with the COMPLETED marker - the post-install script failed.' }
+          if (Test-Path $log) {
+            $tail = Get-Content $log -Tail 30
+            Write-Output '--- install.log tail (30 lines) ---'
+            $tail | Write-Output
+          }
+          if (-not (Test-Path $log)) { throw "install.log not found at $log - the post-install script did not run. See diagnostics above." }
+          if (-not ($tail -match 'post-install COMPLETED')) { throw 'install.log does not end with the COMPLETED marker - the post-install script failed. See diagnostics above.' }
 
       - name: Verify services are running
         shell: pwsh
