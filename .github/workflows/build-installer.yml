@@ -324,7 +324,7 @@ jobs:
 
   install-test:
     name: Install-test on Windows Server (headless)
-    runs-on: windows-2022
+    runs-on: windows-latest
     timeout-minutes: 60
     needs: [build, smoke-test, relay-unit-test]   # strictly last: after the bundle is verified
 
