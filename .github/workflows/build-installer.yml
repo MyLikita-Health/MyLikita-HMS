@@ -411,6 +411,19 @@ jobs:
           }
           if (-not (Test-Path $log)) { throw "install.log not found at $log - the post-install script did not run. See diagnostics above." }
           if (-not ($tail -match 'post-install COMPLETED')) { throw 'install.log does not end with the COMPLETED marker - the post-install script failed. See diagnostics above.' }
+          # Dump the backend error log to help diagnose startup crashes
+          $errLog = 'C:\MyLikita\logs\err.log'
+          if (Test-Path $errLog) {
+            $errTail = Get-Content $errLog -Tail 50
+            Write-Output '--- err.log tail (50 lines) ---'
+            $errTail | Write-Output
+          }
+          $outLog = 'C:\MyLikita\logs\out.log'
+          if (Test-Path $outLog) {
+            $outContent = Get-Content $outLog
+            Write-Output '--- out.log ---'
+            $outContent | Write-Output
+          }
 
       - name: Verify services are running
         shell: pwsh
