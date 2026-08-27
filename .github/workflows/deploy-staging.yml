@@ -91,7 +91,6 @@ jobs:
     needs: build
     environment:
       name: staging
-      url: http://${{ secrets.STAGING_HOST }}:${{ vars.STAGING_PORT || '46990' }}
 
     steps:
       - name: Write docker-compose template
