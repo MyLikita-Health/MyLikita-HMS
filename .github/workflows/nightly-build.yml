@@ -155,17 +155,15 @@ jobs:
 
       # ---- Upload the .exe to the draft release ----
       - name: Upload installer to release
-        shell: pwsh
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $ErrorActionPreference = 'Stop'
-          $uploadUrl = "${{ steps.release.outputs.UPLOAD_URL }}".Trim()
-          # Strip the {?name,label} template suffix (use Split, not regex)
-          $uploadUrl = $uploadUrl.Split('{')[0]
-          $exePath = "${{ steps.build.outputs.EXE_PATH }}"
-          $exeName = "${{ steps.build.outputs.EXE_NAME }}"
-          $pat = "${{ secrets.GITHUB_TOKEN }}"
-          Write-Output "Uploading $exeName..."
-          Invoke-RestMethod -Uri "$uploadUrl?name=$([uri]::EscapeDataString($exeName))" `
-                 -Method Post -Headers @{ Authorization = "Bearer $pat"; Accept = 'application/vnd.github+json'; UserAgent = 'Freebuff'; 'Content-Type' = 'application/octet-stream' } `
-                 -InFile $exePath -TimeoutSec 600
-          Write-Output "[OK] $exeName uploaded to the nightly draft release."
+          set -euo pipefail
+          EXE_NAME="${{ steps.build.outputs.EXE_NAME }}"
+          EXE_PATH="${{ steps.build.outputs.EXE_PATH }}"
+          echo "Uploading $EXE_NAME..."
+          gh release upload nightly "$EXE_PATH#$(basename $EXE_PATH)" \
+            --repo "${{ github.repository }}" \
+            --clobber
+          echo "[OK] $EXE_NAME uploaded to the nightly draft release."
