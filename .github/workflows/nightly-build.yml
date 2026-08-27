@@ -158,9 +158,9 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $uploadUrl = "${{ steps.release.outputs.UPLOAD_URL }}"
-          # Strip the {?name,label} template suffix
-          $uploadUrl = $uploadUrl -replace '\{.*\}', ''
+          $uploadUrl = "${{ steps.release.outputs.UPLOAD_URL }}".Trim()
+          # Strip the {?name,label} template suffix (use Split, not regex)
+          $uploadUrl = $uploadUrl.Split('{')[0]
           $exePath = "${{ steps.build.outputs.EXE_PATH }}"
           $exeName = "${{ steps.build.outputs.EXE_NAME }}"
           $pat = "${{ secrets.GITHUB_TOKEN }}"
