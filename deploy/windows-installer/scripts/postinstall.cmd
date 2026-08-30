@@ -330,6 +330,34 @@ if errorlevel 1 (
     exit /b 1
 )
 
+rem =========================================== PRINT AGENT SERVICE ==========
+call :log "Registering MyLikita Print Agent service..."
+"%NSSM%" status MyLikitaPrintAgent >nul 2>&1
+if !errorlevel! equ 0 (
+    call :log "Removing previous MyLikitaPrintAgent service..."
+    "%NSSM%" stop MyLikitaPrintAgent >nul 2>&1
+    call :sleep 3
+    "%NSSM%" remove MyLikitaPrintAgent confirm >nul 2>&1
+)
+
+"%NSSM%" install MyLikitaPrintAgent "%NODE_DIR%\node.exe"
+"%NSSM%" set MyLikitaPrintAgent AppDirectory "%BACKEND_DIR%"
+"%NSSM%" set MyLikitaPrintAgent AppParameters "print-agent.js"
+"%NSSM%" set MyLikitaPrintAgent AppEnvironmentExtra "NODE_ENV=production"
+"%NSSM%" set MyLikitaPrintAgent Start SERVICE_AUTO_START
+"%NSSM%" set MyLikitaPrintAgent AppStdout "%LOGS_DIR%\print-agent-out.log"
+"%NSSM%" set MyLikitaPrintAgent AppStderr "%LOGS_DIR%\print-agent-err.log"
+"%NSSM%" set MyLikitaPrintAgent AppRotateFiles 1
+"%NSSM%" set MyLikitaPrintAgent AppRotateBytes 5242880
+"%NSSM%" set MyLikitaPrintAgent DisplayName "MyLikita Print Agent"
+"%NSSM%" set MyLikitaPrintAgent Description "MyLikita local print agent - prints receipts via the Windows print spooler"
+if errorlevel 1 (
+    call :log "[ERROR] Could not register MyLikita Print Agent service."
+    rem Non-fatal: the app still works, just no automatic printing.
+) else (
+    call :log "Print Agent service registered."
+)
+
 rem =================================================== FIREWALL ===============
 call :log "Opening firewall port !APP_PORT!..."
 set "FIREWALL_STATUS=not configured"
@@ -347,6 +375,10 @@ rem ===================================================== START + CHECK ========
 call :log "Starting MyLikita service..."
 "%NSSM%" start MyLikita >> "%INSTALL_LOG%" 2>&1
 call :sleep 10
+
+call :log "Starting Print Agent service..."
+"%NSSM%" start MyLikitaPrintAgent >> "%INSTALL_LOG%" 2>&1
+call :sleep 5
 
 call :log "Verifying the app responds..."
 set "HEALTH=not-checked"

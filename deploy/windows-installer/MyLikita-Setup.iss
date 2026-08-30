@@ -108,7 +108,7 @@ begin
   if CurStep = ssInstall then
   begin
     Exec(ExpandConstant('{cmd}'),
-      '/c sc stop MyLikita & sc stop MyLikitaMySQL & ping -n 4 127.0.0.1 >nul',
+      '/c sc stop MyLikitaPrintAgent & sc stop MyLikita & sc stop MyLikitaMySQL & ping -n 4 127.0.0.1 >nul',
       '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   end;
 

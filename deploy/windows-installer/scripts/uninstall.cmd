@@ -5,11 +5,13 @@ title MyLikita - Uninstall
 set "APP_ROOT=%~dp0.."
 set "NSSM=%APP_ROOT%\runtime\nssm\nssm.exe"
 
-echo Stopping MyLikita service...
+echo Stopping MyLikita services...
+"%NSSM%" stop MyLikitaPrintAgent >nul 2>&1
 "%NSSM%" stop MyLikita >nul 2>&1
 timeout /t 3 /nobreak >nul
 
-echo Removing MyLikita service...
+echo Removing MyLikita services...
+"%NSSM%" remove MyLikitaPrintAgent confirm >nul 2>&1
 "%NSSM%" remove MyLikita confirm >nul 2>&1
 
 echo.

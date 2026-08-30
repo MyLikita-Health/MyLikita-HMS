@@ -429,7 +429,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          foreach ($svcName in 'MyLikitaMySQL','MyLikita') {
+          foreach ($svcName in 'MyLikitaMySQL','MyLikita','MyLikitaPrintAgent') {
             $svc = Get-Service -Name $svcName -ErrorAction SilentlyContinue
             if (-not $svc) { throw "Service '$svcName' was not registered." }
             if ($svc.Status -ne 'Running') { throw "Service '$svcName' is $($svc.Status), expected Running." }
