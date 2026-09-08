@@ -1440,7 +1440,13 @@ jobs:
 
           $chrome = 'C:\Program Files\Google\Chrome\Application\chrome.exe'
           if (-not (Test-Path $chrome)) { throw "Chrome not found at $chrome" }
-          $dt = (Get-Date).AddHours(2).ToString('yyyy-MM-ddTHH:mm')
+          # Phase A must book a slot that is NOT already taken: the sibling
+          # "B4 - Book via website key" step uses now+2h, and the relay rejects
+          # a NEW booking that overlaps a delivered slot (409 slot_unavailable),
+          # which made the widget 409 -> poll undefined -> CI:error. Booking 3h
+          # ahead is guaranteed free on a fresh install, so phase A creates a
+          # brand-new booking (asserted by data-ci-ref) and phase B replays it.
+          $dt = (Get-Date).AddHours(3).ToString('yyyy-MM-ddTHH:mm')
           $pageUrl = $serveUrl + '?relay=' + [uri]::EscapeDataString('http://127.0.0.1:46995') +
             '&key=' + $keys.website_key + '&facility=' + $facilityId + '&extref=' + $extRef + '&dt=' + $dt
           $chromeArgs = @('--headless=new','--disable-gpu','--no-sandbox','--disable-dev-shm-usage','--window-size=1280,900')

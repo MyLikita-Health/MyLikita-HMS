@@ -31,6 +31,18 @@ export async function createBooking({ relayUrl, websiteKey, payload, signal }) {
   const body = await readJson(res);
 
   if (res.status === 409) {
+    // Two distinct 409 codes:
+    //  - duplicate_booking: this SAME patient already holds the exact slot
+    //    (page refresh / double-submit) — NOT an error; treat as success and
+    //    poll the existing booking (per the contract §4).
+    //  - slot_unavailable: the window is genuinely taken by ANOTHER booking
+    //    (a race with another patient, or a walk-in / admin / provider block
+    //    pushed after the widget cached availability) — surface it as an
+    //    error so the patient picks a different time instead of being told
+    //    their request is already in.
+    if (body?.error === 'slot_unavailable') {
+      throw apiError(res.status, body, 'create');
+    }
     return { ok: true, duplicate: true, booking_ref: body?.booking_ref, error: body?.message };
   }
   if (!res.ok) {
@@ -61,6 +73,92 @@ export async function fetchProviders({ relayUrl, websiteKey, signal }) {
     specialty: p.specialty || null,
     module: p.module || 'general',
   }));
+}
+
+/**
+ * Fetch the facility's SERVICE registry (Phase C4) — real services with
+ * durations and the providers that offer each. Returns a normalized array
+ * [{ external_id, name, duration_mins, price, module, provider_external_ids }];
+ * an empty list is valid (the widget falls back to a free-text service field).
+ */
+export async function fetchServices({ relayUrl, websiteKey, signal }) {
+  const res = await fetch(`${trimUrl(relayUrl)}/v1/services`, {
+    headers: { Authorization: `Bearer ${websiteKey}` },
+    signal,
+  });
+  const body = await readJson(res);
+  if (!res.ok) throw apiError(res.status, body, 'services');
+  const list = Array.isArray(body?.services) ? body.services : [];
+  return list.map((s) => ({
+    external_id: s.external_id,
+    name: s.name || s.external_id,
+    duration_mins: Number.isFinite(Number(s.duration_mins)) ? Number(s.duration_mins) : 30,
+    price: s.price == null ? null : Number(s.price),
+    module: s.module || 'general',
+    provider_external_ids: Array.isArray(s.provider_external_ids) ? s.provider_external_ids : [],
+  }));
+}
+
+/**
+ * Join a facility's waitlist (Phase C6) — used when every slot on a date is
+ * taken so the patient doesn't give up. Buffered on the relay and pulled by
+ * the hospital. Idempotent: re-submitting the same external_ref resolves with
+ * { ok: true } (the entry already exists).
+ */
+export async function createWaitlist({ relayUrl, websiteKey, payload, signal }) {
+  const res = await fetch(`${trimUrl(relayUrl)}/v1/waitlist`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${websiteKey}`,
+    },
+    body: JSON.stringify(payload),
+    signal,
+  });
+  const body = await readJson(res);
+  if (res.status === 409) {
+    return { ok: true, duplicate: true, error: body?.message };
+  }
+  if (!res.ok) throw apiError(res.status, body, 'waitlist');
+  return { ok: true, duplicate: false, status: body?.status || 'waiting' };
+}
+
+/**
+ * Track a booking-page/embed VIEW (Phase C7) so the relay can compute
+ * conversion-by-source (bookings / views). Only the source + facility + day
+ * are sent — no visitor identity. Best-effort; failures are swallowed by the
+ * caller (a tracking ping must never break the widget).
+ */
+export async function trackPageView({ relayUrl, websiteKey, source, signal }) {
+  try {
+    const res = await fetch(`${trimUrl(relayUrl)}/v1/track`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${websiteKey}` },
+      body: JSON.stringify({ source: source || null }),
+      signal,
+    });
+    if (!res.ok) await readJson(res); // swallow — best-effort
+  } catch (_) { /* best-effort: never surface tracking failures */ }
+}
+
+/**
+ * Fetch the facility's BOOKED time ranges for a date (real-time availability).
+ * The widget blocks candidate slots that overlap an already-booked range so
+ * two patients can't double-book the same window. Returns `[{ start, end }]`
+ * in local wall-clock HH:MM; an empty array means the whole day is free.
+ */
+export async function fetchAvailability({ relayUrl, websiteKey, date, signal }) {
+  const qs = new URLSearchParams({ date });
+  const res = await fetch(`${trimUrl(relayUrl)}/v1/availability?${qs}`, {
+    headers: { Authorization: `Bearer ${websiteKey}` },
+    signal,
+  });
+  const body = await readJson(res);
+  if (!res.ok) throw apiError(res.status, body, 'availability');
+  const list = Array.isArray(body?.booked) ? body.booked : [];
+  return list
+    .filter((b) => b && typeof b.start === 'string' && typeof b.end === 'string')
+    .map((b) => ({ start: b.start, end: b.end }));
 }
 
 /** Fetch a booking's current status. */

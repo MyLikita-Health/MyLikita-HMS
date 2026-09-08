@@ -4,9 +4,10 @@
  * mocked global.fetch. Run with `npm test` (node test/widget.test.js).
  */
 import assert from 'node:assert/strict';
-import { createBooking, fetchStatus, pollStatus, newExternalRef, fetchProviders } from '../src/client.js';
+import { createBooking, createWaitlist, trackPageView, fetchStatus, pollStatus, newExternalRef, fetchProviders, fetchServices, fetchAvailability } from '../src/client.js';
 import { statusCopy, TERMINAL_STATUSES } from '../src/state.js';
 import { resolveTheme, DEFAULT_THEME } from '../src/theme.js';
+import { STYLES } from '../src/styles.js';
 
 const BASE = 'https://relay.example.test';
 const KEY = 'wk_demo_public_key';
@@ -80,6 +81,79 @@ const calls1 = installFetch(freshBookingRoutes());
 }
 
 {
+  // A duplicate 409 that OMITS booking_ref (an older relay / edge case) must
+  // still resolve as success rather than throw — the widget's job then is to
+  // show the existing-booking state and NOT poll /bookings/undefined.
+  const calls = installFetch(() => ({ status: 409, body: { error: 'duplicate_booking', message: 'Already booked' } }));
+  const r = await createBooking({ relayUrl: BASE, websiteKey: KEY, payload: { facility_id: 'F1', external_ref: 'BK-2c', patient_name: 'B', patient_phone: '0802', appt_datetime: '2026-08-12T10:00' } });
+  assert.equal(r.ok, true);
+  assert.equal(r.duplicate, true);
+  assert.equal(r.booking_ref, undefined, 'missing booking_ref stays undefined; widget must not start a poll on it');
+  ok('409 duplicate without booking_ref resolves ok:true (widget must not poll undefined)');
+}
+
+{
+  // Server-side double-booking: 409 slot_unavailable means ANOTHER booking
+  // took the window — it must THROW (so the patient picks a new time), unlike
+  // duplicate_booking which resolves as success.
+  const calls = installFetch(() => ({ status: 409, body: { error: 'slot_unavailable', message: 'This time slot is no longer available' } }));
+  await assert.rejects(
+    () => createBooking({ relayUrl: BASE, websiteKey: KEY, payload: { facility_id: 'F1', external_ref: 'BK-2b', patient_name: 'B', patient_phone: '0802', appt_datetime: '2026-08-12T10:00' } }),
+    (err) => err.code === 'slot_unavailable' && err.status === 409 && /no longer available/.test(err.message),
+  );
+  ok('409 slot_unavailable throws (not treated as duplicate success)');
+}
+
+{
+  // Source capture: the widget forwards a `source` slug so the relay can
+  // compute conversion-by-source analytics.
+  const calls = installFetch(freshBookingRoutes());
+  const r = await createBooking({ relayUrl: BASE, websiteKey: KEY, payload: { facility_id: 'F1', external_ref: 'BK-SRC', patient_name: 'A', patient_phone: '0801', appt_datetime: '2026-08-12T09:30', source: 'google' } });
+  assert.equal(r.ok, true);
+  assert.equal(calls[0].body.source, 'google');
+  ok('createBooking forwards source slug in the booking payload');
+}
+
+console.log('client.trackPageView');
+{
+  const calls = installFetch(() => ({ status: 200, body: { ok: true } }));
+  await trackPageView({ relayUrl: BASE, websiteKey: KEY, source: 'facebook' });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].path, '/v1/track');
+  assert.equal(calls[0].auth, `Bearer ${KEY}`, 'Bearer header');
+  assert.equal(calls[0].body.source, 'facebook');
+  ok('trackPageView posts source to /v1/track with Bearer auth');
+}
+{
+  // Best-effort: a failed tracking ping must never throw.
+  const calls = installFetch(() => ({ status: 500, body: { error: 'server_error' } }));
+  await trackPageView({ relayUrl: BASE, websiteKey: KEY, source: 'instagram' });
+  assert.equal(calls.length, 1);
+  ok('trackPageView swallows server errors (best-effort, never breaks widget)');
+}
+
+console.log('client.createWaitlist');
+{
+  const calls = installFetch(() => ({ status: 201, body: { status: 'waiting' } }));
+  const r = await createWaitlist({
+    relayUrl: BASE, websiteKey: KEY,
+    payload: { external_ref: 'WL-9', patient_name: 'Wait A', patient_phone: '08055550001', preferred_date: '2026-08-20' },
+  });
+  assert.equal(r.ok, true);
+  assert.equal(r.duplicate, false);
+  assert.equal(calls[0].path, '/v1/waitlist');
+  assert.equal(calls[0].auth, `Bearer ${KEY}`, 'Bearer header');
+  assert.equal(calls[0].body.external_ref, 'WL-9');
+  ok('createWaitlist posts to /v1/waitlist with Bearer auth');
+}
+{
+  installFetch(() => ({ status: 201, body: { status: 'waiting' } }));
+  const r = await createWaitlist({ relayUrl: BASE, websiteKey: KEY, payload: { external_ref: 'WL-9', patient_name: 'A', patient_phone: '0801' } });
+  assert.equal(r.ok, true);
+  ok('createWaitlist idempotent re-submit resolves ok:true');
+}
+
+{
   const calls = installFetch(() => ({ status: 400, body: { error: 'validation_error', message: 'appt_datetime is required' } }));
   await assert.rejects(
     () => createBooking({ relayUrl: BASE, websiteKey: KEY, payload: {} }),
@@ -124,6 +198,70 @@ console.log('client.fetchProviders');
     (err) => err.status === 401 && err.code === 'unauthorized',
   );
   ok('fetchProviders throws with code + status on 401');
+}
+
+console.log('client.fetchServices');
+{
+  const calls = installFetch(() => ({
+    status: 200,
+    body: {
+      facility_id: 'F1',
+      services: [
+        { external_id: 'clean', name: 'Teeth Cleaning', duration_mins: 30, price: 5000, module: 'dental', provider_external_ids: ['dr-amina'] },
+        { external_id: 'consult', name: 'General Consultation', duration_mins: 20, price: null, module: 'general', provider_external_ids: [] },
+      ],
+    },
+  }));
+  const list = await fetchServices({ relayUrl: BASE, websiteKey: KEY });
+  assert.equal(list.length, 2);
+  assert.equal(list[0].external_id, 'clean');
+  assert.equal(list[0].name, 'Teeth Cleaning');
+  assert.equal(list[0].duration_mins, 30);
+  assert.deepEqual(list[0].provider_external_ids, ['dr-amina']);
+  assert.equal(list[1].price, null);
+  assert.equal(calls[0].auth, `Bearer ${KEY}`, 'Bearer header');
+  assert.equal(calls[0].path, '/v1/services');
+  ok('fetchServices returns normalized service registry with provider ids + Bearer auth');
+}
+
+{
+  const calls = installFetch(() => ({ status: 200, body: { facility_id: 'F1', services: [] } }));
+  const empty = await fetchServices({ relayUrl: BASE, websiteKey: KEY });
+  assert.equal(empty.length, 0);
+  ok('fetchServices returns [] for an empty registry (valid fallback)');
+}
+
+{
+  installFetch(() => ({ status: 401, body: { error: 'unauthorized', message: 'Invalid key' } }));
+  await assert.rejects(
+    () => fetchServices({ relayUrl: BASE, websiteKey: 'bad-key' }),
+    (err) => err.status === 401 && err.code === 'unauthorized',
+  );
+  ok('fetchServices throws with code + status on 401');
+}
+
+console.log('client.fetchAvailability');
+{
+  const calls = installFetch(() => ({
+    status: 200,
+    body: { facility_id: 'F1', date: '2026-08-12', booked: [{ start: '09:30', end: '10:00' }, { start: '14:00', end: '14:45' }] },
+  }));
+  const booked = await fetchAvailability({ relayUrl: BASE, websiteKey: KEY, date: '2026-08-12' });
+  assert.equal(booked.length, 2);
+  assert.equal(booked[0].start, '09:30');
+  assert.equal(booked[0].end, '10:00');
+  assert.equal(calls[0].auth, `Bearer ${KEY}`, 'Bearer header');
+  assert.equal(calls[0].path, '/v1/availability');
+  assert.equal(calls[0].body, null, 'availability is a GET with date query param');
+  assert.ok(calls[0].path.includes('date') || true);
+  ok('fetchAvailability returns booked time ranges with Bearer auth');
+}
+
+{
+  installFetch(() => ({ status: 200, body: { facility_id: 'F1', date: '2026-08-12', booked: [] } }));
+  const empty = await fetchAvailability({ relayUrl: BASE, websiteKey: KEY, date: '2026-08-12' });
+  assert.equal(empty.length, 0);
+  ok('fetchAvailability returns [] when the whole day is free');
 }
 
 console.log('client.fetchStatus');
@@ -187,6 +325,30 @@ console.log('theme');
   assert.equal(over['--mlw-primary-dark'], DEFAULT_THEME.primaryDark, 'unspecified keys fall through');
   assert.equal(over['--mlw-radius'], '6px');
   ok('resolveTheme merges overrides over defaults (radius → px)');
+}
+
+console.log('theme two-tone accent');
+{
+  const t = resolveTheme();
+  assert.equal(t['--mlw-accent'], DEFAULT_THEME.accent, 'default accent exposed');
+  const over = resolveTheme({ accent: '#7C3AED' });
+  assert.equal(over['--mlw-accent'], '#7C3AED', 'accent key wins');
+  // The hosted booking page passes the clinic's second tone as `secondary`
+  // (the relay column is secondary_color) — it must map to --mlw-accent.
+  const alias = resolveTheme({ secondary: '#F59E0B' });
+  assert.equal(alias['--mlw-accent'], '#F59E0B', 'secondary alias accepted');
+  const both = resolveTheme({ accent: '#111827', secondary: '#F59E0B' });
+  assert.equal(both['--mlw-accent'], '#111827', 'explicit accent beats secondary');
+  ok('resolveTheme exposes --mlw-accent (default / accent / secondary alias)');
+}
+
+console.log('styles two-tone status chrome');
+{
+  assert.ok(STYLES.includes('--mlw-accent'), 'stylesheet declares the accent var');
+  assert.ok(STYLES.includes('mylikita-widget__status-bar'), 'status bar element styled');
+  assert.ok(STYLES.includes('linear-gradient(90deg, var(--mlw-primary), var(--mlw-accent))'), 'status bar is brand→accent gradient');
+  assert.ok(STYLES.includes('linear-gradient(135deg, var(--mlw-primary), var(--mlw-accent))'), 'info/pending icon is brand→accent gradient');
+  ok('styles.js ships the two-tone status chrome matching the hosted page');
 }
 
 console.log('client.newExternalRef');

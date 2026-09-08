@@ -126,6 +126,7 @@ specificity fights:
   --mlw-primary: #0d9488;      /* buttons, focus rings, accents */
   --mlw-primary-dark: #0f766e; /* hover state */
   --mlw-primary-text: #ffffff; /* button label */
+  --mlw-accent: #0d9488;       /* second tone of the two-tone brand */
   --mlw-bg: #ffffff;           /* widget background */
   --mlw-text: #1e293b;         /* labels + values */
   --mlw-muted: #64748b;        /* secondary text */
@@ -143,6 +144,28 @@ Or programmatically:
 createBookingWidget(el, {
   relayUrl, websiteKey, facilityId,
   theme: { primary: '#e91e63', radius: 6, bg: '#fffaf5' },
+});
+```
+
+### Two-tone branding (matching the hosted booking page)
+
+MyLikita's hosted booking page themes itself with the clinic's two-tone brand
+— a brand→accent gradient strip and avatar. The widget mirrors that on its
+**confirmation / status screen**: a brand→accent gradient bar sits at the top
+of the status view and the pending (">…") icon is a brand→accent gradient
+badge, so an embed reads as the same branded page. Semantic results keep
+semantic colours (green ✓ = confirmed, red = cancelled/missed/expired).
+
+Pass the second tone as `accent` (or `secondary` — the alias the hosted page
+and the facility settings snippet use):
+
+```js
+createBookingWidget(el, {
+  relayUrl, websiteKey, facilityId,
+  theme: {
+    primary: '#7C3AED',   // brand — buttons, focus, links
+    secondary: '#F59E0B', // accent — gradient bar + pending icon
+  },
 });
 ```
 
