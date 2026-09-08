@@ -694,7 +694,11 @@ export function createBookingWidget(element, options = {}) {
   // Rebuild the form so it reads: badge, error, progress, steps 1-4, hint.
   // The field nodes were re-parented into their step containers above, so
   // replaceChildren keeps them (now nested) — only the shell is rebuilt.
-  form.replaceChildren(noAccountBadge, errorBox, progressBar, stepService, stepDateTime, stepDetails, stepReview, hint);
+  // Keep the hidden `datetime` carrier in the DOM (not just on the JS node):
+  // slot-chip clicks set datetime.input.value on the object, but any code that
+  // reads the field by id (hosts, the CI harness's mlw-datetime, reset) needs
+  // the element attached. It is invisible via the hidden attribute.
+  form.replaceChildren(noAccountBadge, errorBox, progressBar, stepService, stepDateTime, stepDetails, stepReview, hint, datetime.wrap);
   submitRow.hidden = true; // the review step's Confirm button is the submitter
   showStep(1);
 

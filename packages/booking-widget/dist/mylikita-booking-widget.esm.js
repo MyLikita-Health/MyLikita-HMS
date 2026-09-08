@@ -1430,7 +1430,7 @@ function createBookingWidget(element, options = {}) {
     setError(null);
     return true;
   }
-  form.replaceChildren(noAccountBadge, errorBox, progressBar, stepService, stepDateTime, stepDetails, stepReview, hint);
+  form.replaceChildren(noAccountBadge, errorBox, progressBar, stepService, stepDateTime, stepDetails, stepReview, hint, datetime.wrap);
   submitRow.hidden = true;
   showStep(1);
   waitlistBtn.addEventListener("click", async () => {
