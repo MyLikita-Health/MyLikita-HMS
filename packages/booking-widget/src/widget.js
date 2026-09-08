@@ -802,10 +802,13 @@ export function createBookingWidget(element, options = {}) {
     // phone is now REQUIRED (the clinic confirms appointments over the
     // phone/WhatsApp) and must be a valid, normalized number.
     if (!payload.patient_name) return fail(t.requiredName);
-    const phone = normalizePhone(payload.patient_phone);
-    if (!phone) return fail(t.requiredPhone);
-    if (!isValidPhone(phone)) return fail(t.invalidPhone);
-    payload.patient_phone = phone;
+    // `normalizedPhone` (not `phone`) — `phone` is the outer field control and
+    // esbuild renames a shadowing local to a colliding identifier, which makes
+    // the payload's `phone.input.value` reference a TDZ'd variable at runtime.
+    const normalizedPhone = normalizePhone(payload.patient_phone);
+    if (!normalizedPhone) return fail(t.requiredPhone);
+    if (!isValidPhone(normalizedPhone)) return fail(t.invalidPhone);
+    payload.patient_phone = normalizedPhone;
     if (!payload.appt_datetime || Number.isNaN(Date.parse(payload.appt_datetime))) return fail(t.requiredSlot);
 
     // Idempotency (§4): reuse the stored ref on refresh/resubmit, mint once.

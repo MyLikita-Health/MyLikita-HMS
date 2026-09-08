@@ -1498,7 +1498,7 @@ function createBookingWidget(element, options = {}) {
     const payload = {
       facility_id: opts.facilityId,
       patient_name: name.input.value.trim(),
-      patient_phone: phone2.input.value.trim(),
+      patient_phone: phone.input.value.trim(),
       patient_email: email.input.value.trim(),
       provider_external_id: provider.input.value || void 0,
       service_name: sel && sel.name || void 0,
@@ -1520,10 +1520,10 @@ function createBookingWidget(element, options = {}) {
       payload.anc_lmp_date = lmp;
     }
     if (!payload.patient_name) return fail(t.requiredName);
-    const phone2 = normalizePhone(payload.patient_phone);
-    if (!phone2) return fail(t.requiredPhone);
-    if (!isValidPhone(phone2)) return fail(t.invalidPhone);
-    payload.patient_phone = phone2;
+    const normalizedPhone = normalizePhone(payload.patient_phone);
+    if (!normalizedPhone) return fail(t.requiredPhone);
+    if (!isValidPhone(normalizedPhone)) return fail(t.invalidPhone);
+    payload.patient_phone = normalizedPhone;
     if (!payload.appt_datetime || Number.isNaN(Date.parse(payload.appt_datetime))) return fail(t.requiredSlot);
     let external_ref = readStoredRef(refKey);
     if (!external_ref) {
