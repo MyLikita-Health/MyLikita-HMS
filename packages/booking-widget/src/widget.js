@@ -181,7 +181,9 @@ export function createBookingWidget(element, options = {}) {
 
   // ── DOM construction ────────────────────────────────────────────────────
   // The brand header is optional (white-label hosts pass showBrand:false);
-  // replaceChildren() ignores null, so the rest of the tree is unchanged.
+  // filter the null out before replaceChildren — a null argument is coerced
+  // to the literal text "null" by the DOM spec, which is the bug that printed
+  // a stray "null" above the widget title on white-labelled booking pages.
   const brand = opts.showBrand ? createBrandHeader() : null;
   const form = el('form', { className: 'mylikita-widget__form' });
 
@@ -1045,7 +1047,7 @@ export function createBookingWidget(element, options = {}) {
     if (typeof showStep === 'function') showStep(1);
   }
 
-  root.replaceChildren(brand, title, subtitle, form, statusView);
+  root.replaceChildren(...[brand, title, subtitle, form, statusView].filter(Boolean));
 
   // ── async provider + service load (Phase C2/C3, C4) ────────────────────
   // When loadProviders is on, fetch the facility's mapped doctors and service

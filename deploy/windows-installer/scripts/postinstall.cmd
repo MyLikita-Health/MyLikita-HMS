@@ -237,8 +237,11 @@ call :log "Writing backend\.env..."
     rem ---- SMS via Termii [https://termii.com] - leave empty to disable ----
     echo TERMII_API_KEY=
     echo TERMII_SENDER_ID=MyLikita
-    rem ---- WhatsApp via Termii - set TERMII_WHATSAPP_ID to enable WhatsApp reminders ----
-    echo TERMII_WHATSAPP_ID=
+    rem ---- WhatsApp via Meta Cloud API - fill in WHATSAPP_* below (see OFFLINE_INSTALLATION_GUIDE, section 5.1) ----
+    echo WHATSAPP_ACCESS_TOKEN=
+    echo WHATSAPP_PHONE_NUMBER_ID=
+    echo WHATSAPP_VERIFY_TOKEN=
+    echo WHATSAPP_APP_SECRET=
     echo.
     rem ---- Email via Resend [https://resend.com] - leave empty to disable ----
     echo RESEND_API_KEY=

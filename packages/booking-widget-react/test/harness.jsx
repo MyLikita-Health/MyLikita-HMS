@@ -217,6 +217,12 @@ export async function run() {
     assert(ok6b, 'widget still mounts with showBrand:false');
     assert(host.querySelector('.mylikita-widget__brand') === null, 'brand header hidden when showBrand:false');
     assert(host.querySelector('.mylikita-widget__title'), 'title still renders without brand');
+    // Regression — replaceChildren(null) coerces null into a literal "null"
+    // text node, which printed a stray "null" above the widget title on
+    // white-labelled booking pages. No stray text node may precede the title.
+    const widgetRoot = host.querySelector('.mylikita-widget');
+    const strayNull = Array.from(widgetRoot.childNodes).some((n) => n.nodeType === 3 && n.textContent === 'null');
+    assert(!strayNull, 'no stray "null" text node when the brand header is hidden');
     ReactDOM.unmountComponentAtNode(host);
     host.remove();
     ok('showBrand:false hides the brand header (white-label)');
@@ -246,6 +252,84 @@ export async function run() {
     ReactDOM.unmountComponentAtNode(host);
     host.remove();
     ok('theme change recreates widget with new styles');
+  }
+
+  // ── 7. ancBooking: true adds the antenatal flow (LMP capture) ────────────
+  console.log('ancBooking');
+  {
+    // Default (no ancBooking): no antenatal option, no LMP group ever.
+    {
+      installMockRelay();
+      const host = makeContainer();
+      ReactDOM.render(
+        React.createElement(BookingWidget, {
+          relayUrl: 'https://relay.example.test',
+          websiteKey: 'wk_demo',
+          facilityId: 'F1',
+          pollIntervalMs: 15,
+        }),
+        host,
+      );
+      await waitFor(() => host.querySelector('.mylikita-widget__form'));
+      const sel = host.querySelector('#mlw-visitType');
+      assert(sel && !Array.from(sel.options).some((o) => o.value === 'antenatal'), 'no antenatal option without ancBooking');
+      assert(host.querySelector('.mylikita-widget__anc') === null, 'no LMP group without ancBooking');
+      ReactDOM.unmountComponentAtNode(host);
+      host.remove();
+      ok('ANC flow hidden by default (backwards compatible)');
+    }
+
+    // ancBooking: true → antenatal option + conditional LMP group + payload.
+    {
+      const calls = installMockRelay();
+      const host = makeContainer();
+      ReactDOM.render(
+        React.createElement(BookingWidget, {
+          relayUrl: 'https://relay.example.test',
+          websiteKey: 'wk_demo',
+          facilityId: 'F1',
+          ancBooking: true,
+          pollIntervalMs: 15,
+        }),
+        host,
+      );
+      await waitFor(() => host.querySelector('.mylikita-widget__form'));
+      const sel = host.querySelector('#mlw-visitType');
+      assert(sel && Array.from(sel.options).some((o) => o.value === 'antenatal'), 'antenatal option present with ancBooking');
+      const ancGroup = host.querySelector('.mylikita-widget__anc');
+      assert(ancGroup && ancGroup.hidden !== false && ancGroup.hasAttribute('hidden'), 'LMP group hidden on a normal appointment');
+
+      // Picking antenatal reveals the LMP date field.
+      sel.value = 'antenatal';
+      sel.dispatchEvent(new window.Event('change', { bubbles: true }));
+      assert(ancGroup.hasAttribute('hidden') === false, 'LMP group revealed when antenatal chosen');
+      assert(host.querySelector('#mlw-ancLmp'), 'LMP date input rendered');
+
+      // Submitting WITHOUT an LMP errors client-side and never POSTs.
+      fill(host, 'mlw-name', 'Aisha');
+      fill(host, 'mlw-phone', '0801 234 5678');
+      fill(host, 'mlw-datetime', '2026-10-12T10:30');
+      const form = host.querySelector('.mylikita-widget__form');
+      form.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
+      const errShown = await waitFor(() => host.querySelector('.mylikita-widget__error.visible'));
+      assert(errShown, 'missing-LMP submit surfaces a client error');
+      assert(calls.filter((c) => c.method === 'POST' && c.path === '/v1/bookings').length === 0, 'no POST when LMP missing');
+
+      // With an LMP, the ANC payload reaches the relay.
+      fill(host, 'mlw-ancLmp', '2026-04-01');
+      form.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }));
+      let posted = null;
+      const postedOk = await waitFor(() => {
+        posted = calls.find((c) => c.method === 'POST' && c.path === '/v1/bookings' && c.body && c.body.booking_type === 'anc');
+        return !!posted;
+      });
+      assert(postedOk, 'antenatal submit POSTs booking_type anc');
+      assert(posted && posted.body && posted.body.anc_lmp_date === '2026-04-01', `anc_lmp_date carried through — got ${JSON.stringify(posted && posted.body)}`);
+      assert(posted && posted.body && posted.body.visit_type === 'antenatal', 'visit_type antenatal sent');
+      ReactDOM.unmountComponentAtNode(host);
+      host.remove();
+      ok('antenatal flow captures LMP and sends booking_type anc + anc_lmp_date');
+    }
   }
 
   console.log(`\nSummary: ${pass} passed, ${fail} failed (${Date.now() - t0} ms)`);

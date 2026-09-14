@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex" />
+<title>Booking widget embed guide · MyLikita</title>
+<style>
+  :root {
+    --brand: #0d9488;
+    --brand-dark: #0f766e;
+    --ink: #1e293b;
+    --muted: #64748b;
+    --line: #e2e8f0;
+    --bg: #f1f5f9;
+    --card: #ffffff;
+    --ok: #15803d;
+    --ok-bg: #dcfce7;
+    --code-bg: #0f172a;
+    --code-ink: #e2e8f0;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.55;
+  }
+  header.hero {
+    background: linear-gradient(135deg, #0f766e 0%, #0d9488 55%, #14b8a6 100%);
+    color: #fff;
+    padding: 40px 24px 64px;
+  }
+  header.hero .inner { max-width: 860px; margin: 0 auto; }
+  header.hero .kicker { font-size: 13px; letter-spacing: .12em; text-transform: uppercase; opacity: .8; margin: 0 0 8px; font-weight: 600; }
+  header.hero h1 { margin: 0 0 8px; font-size: 28px; }
+  header.hero p { margin: 0; opacity: .92; max-width: 680px; }
+  main { max-width: 860px; margin: -36px auto 48px; padding: 0 20px; }
+  .card {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 14px; padding: 24px 28px; margin-bottom: 20px;
+    box-shadow: 0 4px 14px rgba(15, 23, 42, .06);
+  }
+  .pill {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 6px 14px; border-radius: 999px; font-size: 13px; font-weight: 600;
+    background: var(--ok-bg); color: var(--ok);
+  }
+  h2 { margin: 0 0 6px; font-size: 18px; }
+  .sub { color: var(--muted); font-size: 14px; margin: 0 0 18px; }
+  .steps { counter-reset: step; margin: 0; padding: 0; list-style: none; }
+  .steps li {
+    counter-increment: step; position: relative; padding: 0 0 18px 44px;
+    font-size: 14px; color: var(--ink);
+  }
+  .steps li:not(:last-child) { border-left: 2px solid var(--line); margin-left: 15px; }
+  .steps li::before {
+    content: counter(step); position: absolute; left: 0; top: 0;
+    width: 32px; height: 32px; border-radius: 50%;
+    background: var(--brand); color: #fff; font-weight: 700;
+    display: grid; place-items: center; font-size: 14px;
+  }
+  .steps li code, .inline-code {
+    background: #f1f5f9; border: 1px solid var(--line); border-radius: 5px;
+    padding: 1px 6px; font-size: 12.5px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  .steps li .muted { color: var(--muted); }
+  pre.code {
+    background: var(--code-bg); color: var(--code-ink);
+    border-radius: 10px; padding: 14px 18px; overflow-x: auto;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 13px; line-height: 1.6; margin: 10px 0 0;
+  }
+  pre.code .cmt { color: #94a3b8; }
+  .note { border-radius: 10px; padding: 14px 18px; font-size: 14px; margin: 0 0 18px; background: #f0fdfa; border: 1px solid #99f6e4; }
+  .note b { color: var(--brand-dark); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 4px; }
+  .cell { border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; background: #f8fafc; }
+  .cell .label { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
+  .cell .value { font-size: 13px; margin-top: 3px; }
+  .foot { text-align: center; color: var(--muted); font-size: 12.5px; padding: 8px 20px 40px; }
+  .foot a { color: var(--brand); text-decoration: none; font-weight: 600; }
+  table.plain { width: 100%; border-collapse: collapse; font-size: 13.5px; margin: 4px 0 0; }
+  table.plain th, table.plain td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  table.plain th { font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  table.plain code { background: #f1f5f9; border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; font-size: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+</style>
+</head>
+<body>
+<header class="hero">
+  <div class="inner">
+    <p class="kicker">MyLikita · Website booking</p>
+    <h1>Add online booking to your existing website</h1>
+    <p>Drop a small booking form into any page of your site — WordPress, Wix, Squarespace or plain HTML. Visitors pick a
+       doctor and time and book straight into <strong>this clinic's</strong> appointment list, no extra login needed.</p>
+    <p style="margin-top:16px;"><a href="/docs" style="color:#fff;opacity:.85;font-size:13px;font-weight:600;text-decoration:none;">← All booking guides</a></p>
+  </div>
+</header>
+<main>
+  <div class="card">
+    <span class="pill">✓ Fully supported</span>
+    <p class="sub" style="margin-top:10px;">This guide assumes website booking is already set up for the facility.
+      If not, open <strong>Settings → Website Booking Relay</strong> and press the one-click generate button first
+      (no console, no copy/paste), then come back here.</p>
+
+    <div class="grid">
+      <div class="cell"><div class="label">Best for</div><div class="value">Clinics with a website that want the form on a page of their own site</div></div>
+      <div class="cell"><div class="label">Time needed</div><div class="value">≈ 5 minutes, no developer required</div></div>
+      <div class="cell"><div class="label">No website?</div><div class="value">Use the hosted booking page instead — see the <a href="/docs/custom-domain" style="color:var(--brand);font-weight:600;">guides</a></div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>How to embed the booking widget</h2>
+    <ol class="steps">
+      <li>
+        <strong>Copy the ready-made snippet.</strong> In MyLikita, open <strong>Settings → Website Booking Relay</strong> and
+        scroll to <strong>Embed on your website</strong>. Press <strong>Copy snippet</strong>. The snippet already contains
+        everything the widget needs for <em>this</em> facility — there is nothing to fill in by hand.
+      </li>
+      <li>
+        <strong>Paste it into your page.</strong> Paste just before the closing <code>&lt;/body&gt;</code> tag of any page.
+        <div class="muted" style="font-size:12.5px;">Plain HTML: paste directly into the file. WordPress: a custom HTML block,
+        or a "header &amp; footer" plugin. Wix / Squarespace: an embed / HTML element on the page.</div>
+      </li>
+      <li>
+        <strong>Publish and check.</strong> Open the page and confirm the booking form appears and loads the clinic's
+        doctors. The card shows a live preview of the same form before you even touch your website.
+      </li>
+      <li>
+        <strong>Bookings arrive in MyLikita.</strong> Patients' requests appear in the clinic's normal booking list.
+        Confirm them and the patient is notified — exactly like every other booking.
+      </li>
+    </ol>
+  </div>
+
+  <div class="card">
+    <h2>What's inside the snippet</h2>
+    <p class="sub">Three short options tell the widget where the clinic lives. All three are <strong>public by design</strong> —
+       the same values already sit in every page that loads the widget. The snippet never contains your secret sync key.</p>
+    <table class="plain">
+      <tr><th style="width:130px;">Option</th><th>What it is</th></tr>
+      <tr><td><code>relayUrl</code></td><td>The relay that routes bookings to this clinic (<code>https://relay.mylikita.com</code> or your own relay).</td></tr>
+      <tr><td><code>websiteKey</code></td><td>The clinic's public website key — a client id, not a password. Anyone can see it; only the relay can use it to book into this clinic.</td></tr>
+      <tr><td><code>facilityId</code></td><td>This clinic's public id on the relay.</td></tr>
+    </table>
+    <p class="sub" style="margin-top:14px;">
+      Rotated your keys? Open the card again and re-copy — the snippet updates with the fresh website key instantly.
+      The old snippet stops working the moment keys rotate.
+    </p>
+  </div>
+
+  <div class="card">
+    <h2>Choosing the right option for this clinic</h2>
+    <p class="sub">All three put the same secure booking pipeline in front of patients — pick by where you want the form to live.</p>
+    <table class="plain">
+      <tr><th>Option</th><th>Where patients book</th><th>Best when…</th></tr>
+      <tr><td><strong>Booking widget</strong> (this guide)</td><td>Inline on a page of your existing website</td><td>You have a website and want booking on it.</td></tr>
+      <tr><td><strong>Hosted booking page</strong></td><td>A dedicated page at <code>https://relay.mylikita.com/book/…</code></td><td>You have no website — share the link or QR, or print the poster.</td></tr>
+      <tr><td><strong>Custom booking domain</strong></td><td>The same dedicated page on your own address, e.g. <code>book.yourclinic.com</code></td><td>You want a branded booking address without building a site page.</td></tr>
+    </table>
+    <p class="sub" style="margin-top:14px;">See the <a href="/docs/custom-domain" style="color:var(--brand);font-weight:600;">custom domain guide</a>
+      for the hosted-page options. If your website can never reach this server over the network (for example an offline
+      clinic install), use the CDN bundle instead: the settings card's snippet also works with
+      <code class="inline-code">https://unpkg.com/@mylikita/booking-widget</code> in place of the server-hosted script.</p>
+  </div>
+
+  <div class="card">
+    <h2>Good to know</h2>
+    <div class="note"><b>No secrets in the page.</b> The snippet is safe to paste anywhere — the website key is a public
+      client id that only lets visitors request appointments for this clinic, never change settings.</div>
+    <div class="note"><b>Patients don't need accounts.</b> Booking is anonymous until the clinic confirms — patients give
+      a name and phone number, and get notified by SMS/email once confirmed.</div>
+    <div class="note"><b>Staff confirm everything.</b> No appointment is ever added to the clinic's list without a staff
+      member confirming it first.</div>
+  </div>
+</main>
+<div class="foot">Powered by <a href="https://mylikita.com">MyLikita</a> · secure online booking</div>
+</body>
+</html>

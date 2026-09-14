@@ -1,4 +1,4 @@
-/*! @mylikita/booking-widget-react v0.1.1 | MIT */
+/*! @mylikita/booking-widget-react v1.27.0 | MIT */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -50,6 +50,7 @@ var BookingWidget = (0, import_react.forwardRef)(function BookingWidget2(props, 
     pollIntervalMs,
     maxTries,
     showBrand,
+    ancBooking,
     theme,
     text,
     externalRef,
@@ -75,6 +76,7 @@ var BookingWidget = (0, import_react.forwardRef)(function BookingWidget2(props, 
     pollIntervalMs,
     maxTries,
     showBrand,
+    ancBooking,
     theme,
     text
   });
@@ -95,6 +97,7 @@ var BookingWidget = (0, import_react.forwardRef)(function BookingWidget2(props, 
       showBrand,
       theme,
       text,
+      ancBooking: ancBooking === true,
       // externalRef is a function — routed through a ref like the callbacks so
       // an identity change is picked up without tearing down the widget.
       externalRef: cbRef.current.externalRef,

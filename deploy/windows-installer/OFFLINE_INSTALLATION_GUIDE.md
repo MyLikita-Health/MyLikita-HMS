@@ -32,10 +32,10 @@ couple of standard prompts, and wait a few minutes. That's it.
 
 ## 1.1 SMS / email configuration sheet (optional — fill in before install)
 
-MyLikita sends appointment reminders and notifications by **SMS** and **email**
-through **Termii** (SMS/WhatsApp) and **Resend** (email). The app works fully
-without these — but if you want patients to receive SMS/email reminders, the
-server needs the credentials below.
+MyLikita sends appointment reminders and notifications by **SMS**, **WhatsApp**
+and **email** through **Termii** (SMS), **Meta** (WhatsApp — direct Cloud API,
+no gateway) and **Resend** (email). The app works fully without these — but if
+you want patients to receive reminders, the server needs the credentials below.
 
 **Fill this sheet in *before* you install**, so the values are ready when you
 edit the server's configuration after setup (section 5.1). It is also the
@@ -45,7 +45,7 @@ handy thing to give whoever does the installation.
 > drawer or a password manager, and never email it as plain text. Anyone who
 > has these keys can spend SMS/email credit on the accounts.
 
-### Termii — SMS (and optional WhatsApp)
+### Termii — SMS
 
 | # | What you need | Where to find it | Your value (fill in) |
 |---|---|---|---|
@@ -53,9 +53,17 @@ handy thing to give whoever does the installation.
 | 2 | **API Key** → `TERMII_API_KEY` | Termii → *Settings → Developers → API Keys* | _______________________________ |
 | 3 | **Sender ID** → `TERMII_SENDER_ID` | *Settings → Sender ID* — verify an alphanumeric ID (e.g. `MyLikita`). This is the name patients see on their phone | ________________ (default `MyLikita`) |
 | 4 | **Channel** → `TERMII_CHANNEL` | Leave `generic` unless you have a DND (marketing) sender ID | `generic` / `dnd` |
-| 5 | **WhatsApp device name** → `TERMII_WHATSAPP_ID` *(optional)* | Termii → *WhatsApp → Devices* | ______________ (blank = WhatsApp off) |
 
 **Checklist (tick when done):** ☐ Termii account created · ☐ Sender ID verified · ☐ API key copied
+
+### WhatsApp — Meta Business Cloud API (optional, direct)
+
+| # | What you need | Where to find it | Your value (fill in) |
+|---|---|---|---|
+| 1 | **Meta Business account + WhatsApp app** | **business.facebook.com** → WhatsApp → add the one shared Business number | Account email: ________________ |
+| 2 | **Access token** → `WHATSAPP_ACCESS_TOKEN` | Business Settings → System Users → generate a permanent token (`whatsapp_business_messaging` + `whatsapp_business_management`) | _______________________________ |
+| 3 | **Phone number id** → `WHATSAPP_PHONE_NUMBER_ID` | WhatsApp Manager → API Setup | _______________________________ |
+| 4 | **Business account id** → `WHATSAPP_BUSINESS_ACCOUNT_ID` | WhatsApp Manager → API Setup (only needed to register the templates with the script) | _______________________________ |
 
 ### Resend — email
 
@@ -213,14 +221,14 @@ Useful files:
 
 ---
 
-## 5.1 Optional: turn on SMS and email notifications (Termii + Resend)
+## 5.1 Optional: turn on SMS, WhatsApp and email notifications
 
-MyLikita sends appointment reminders and notifications by **SMS** and **email**.
-The system ships ready to use, but those two channels need an online account to
-actually deliver messages. This is optional — the app works fully without them;
-if you skip this step, the in-app notification bell still works, and the
-Reminder Health screen (Admin → Setup → Reminder Health) will show SMS/email as
-**"NOT configured"** so you know why nothing is being sent.
+MyLikita sends appointment reminders and notifications by **SMS**, **WhatsApp**
+and **email**. The system ships ready to use, but these channels need online
+accounts to actually deliver messages. This is optional — the app works fully
+without them; if you skip this step, the in-app notification bell still works,
+and the Reminder Health screen (Admin → Setup → Reminder Health) will show each
+channel as **"NOT configured"** so you know why nothing is being sent.
 
 > If you filled in the **configuration sheet** in section 1.1, type the values
 > from it into `.env` below — each line tells you which key it maps to.
@@ -237,21 +245,26 @@ Administrator), fill in the key, and save:
    TERMII_API_KEY=YourTermiiApiKeyHere
    TERMII_SENDER_ID=MyLikita
    ```
-4. *(Optional — WhatsApp)* In the same `.env` file, add the WhatsApp device
-   name from *Termii Dashboard → WhatsApp → Devices* to enable WhatsApp
-   reminders + booking confirmations alongside SMS/email:
+4. *(Optional — WhatsApp, direct to Meta)* In the same `.env` file, add the
+   **Meta WhatsApp Business Cloud API** credentials (the platform's one shared
+   WhatsApp Business number — no Termii, no gateway):
    ```
-   TERMII_WHATSAPP_ID=YourTermiiWhatsAppDeviceName
+   WHATSAPP_ACCESS_TOKEN=<System-User token with WhatsApp permissions>
+   WHATSAPP_PHONE_NUMBER_ID=<Phone number ID from WhatsApp Manager → API Setup>
    ```
 
-   > **How WhatsApp works here:** Termii delivers WhatsApp through the same
-   > API as SMS — it just needs its own **device name** (the "sender" your
-   > patients see in WhatsApp) plus the same API key. Your device name is
-   > found under **Termii Dashboard → WhatsApp → Devices** (it looks like a
-   > short word or your clinic's name, e.g. `myclinic-wa`). Both
-   > `TERMII_API_KEY` and `TERMII_WHATSAPP_ID` must be present — if either is
-   > missing, WhatsApp is simply not used (SMS/email keep working), and the
-   > Reminder Health screen shows WhatsApp as **"NOT configured"**.
+   > **How WhatsApp works here:** each server calls **Meta's WhatsApp Business
+   > Cloud API directly** (services/whatsappCloudApi.js) using the ONE
+   > centrally-owned WhatsApp Business number. Because Meta only allows
+   > business-initiated messages from **pre-approved templates**, the app
+   > sends a fixed set of canonical templates — after configuring the keys,
+   > run `node scripts/register-whatsapp-templates.js` inside the backend
+   > folder (needs `WHATSAPP_BUSINESS_ACCOUNT_ID` too) and approve the created
+   > templates in WhatsApp Manager. If `WHATSAPP_ACCESS_TOKEN` or
+   > `WHATSAPP_PHONE_NUMBER_ID` is missing, WhatsApp is simply not used
+   > (SMS/email keep working) and Reminder Health shows WhatsApp as
+   > **"NOT configured"**. The delivery-status webhook is optional and only
+   > works on servers reachable from the internet.
 
 5. Restart the app: `"C:\MyLikita\runtime\nssm\nssm.exe" restart MyLikita`
 (Administrator Command Prompt).
@@ -271,7 +284,7 @@ while trying it out), so Resend knows you own the address emails come from.
 4. Restart the app as above.
 
 You can confirm it worked on the **Reminder Health** screen — the SMS, Email
-(and WhatsApp, if enabled) channels should now show **"configured"**.
+and WhatsApp (if enabled) channels should now show **"configured"**.
 
 ### 5.2 Per-facility notification channels (SMS / WhatsApp / Email / In-app)
 
@@ -287,7 +300,7 @@ and WhatsApp, or turn WhatsApp off while you test it.
    | Channel | What it sends | Notes |
    |---|---|---|
    | **SMS (Termii)** | Text messages to patients' phones | Needs `TERMII_API_KEY` (section 5.1) |
-   | **WhatsApp (Termii)** | WhatsApp messages to patients' phones | Needs `TERMII_API_KEY` **and** `TERMII_WHATSAPP_ID` (section 5.1 step 4) |
+   | **WhatsApp (Meta)** | WhatsApp messages to patients' phones | Needs `WHATSAPP_ACCESS_TOKEN` + `WHATSAPP_PHONE_NUMBER_ID` (section 5.1 step 4) + approved templates |
    | **Email (Resend)** | Emails to patients | Needs `RESEND_API_KEY` + `EMAIL_FROM` (section 5.1) |
    | **In-app bell** | Reminders shown inside MyLikita (no SMS/email cost) | Works fully offline; the notification bell in the top bar is separate and always on |
 

@@ -44,6 +44,7 @@ const BookingWidget = forwardRef(function BookingWidget(props, ref) {
     pollIntervalMs,
     maxTries,
     showBrand,
+    ancBooking,
     theme,
     text,
     externalRef,
@@ -79,6 +80,7 @@ const BookingWidget = forwardRef(function BookingWidget(props, ref) {
     pollIntervalMs,
     maxTries,
     showBrand,
+    ancBooking,
     theme,
     text,
   });
@@ -103,6 +105,7 @@ const BookingWidget = forwardRef(function BookingWidget(props, ref) {
       showBrand,
       theme,
       text,
+      ancBooking: ancBooking === true,
       // externalRef is a function — routed through a ref like the callbacks so
       // an identity change is picked up without tearing down the widget.
       externalRef: cbRef.current.externalRef,

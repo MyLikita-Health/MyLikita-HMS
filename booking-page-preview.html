@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex" />
+<link rel="icon" type="image/svg+xml" href="/mylikita-mark.svg" />
+<title>Book an appointment · Quovadis Dental Studio</title>
+<style>
+  :root { --brand:#2563EB; --brand-dark:#0745cd; --brand-light:#4f8dff; --accent:#14B8A6; --accent-dark:#00a08e; --ink:#0f172a; --muted:#5b6b7f; --line:#e6ebf2; --soft:rgba(37, 99, 235, 0.06); }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif; background:#f4f7fb; color:var(--ink); -webkit-font-smoothing:antialiased; -webkit-tap-highlight-color:transparent; }
+  .wrap { max-width:1120px; margin:0 auto; padding-left:20px; padding-right:20px; }
+  /* Two-tone brand strip + clinic hero — the clinic's name & logo are the
+     page's primary identity; the MyLikita mark is a small power badge that
+     white-label facilities can drop entirely. */
+  .accent-bar { height:4px; background:linear-gradient(90deg, var(--brand), var(--accent)); }
+  .hero { position:relative; background:rgba(37, 99, 235, 0.06); border-bottom:1px solid var(--line); overflow:hidden; }
+  .hero::before { content:''; position:absolute; inset:0; background:linear-gradient(120deg, rgba(37, 99, 235, 0.10) 0%, transparent 45%, rgba(20, 184, 166, 0.10) 100%); pointer-events:none; }
+  .hero-inner { position:relative; display:flex; align-items:center; gap:22px; padding-top:34px; padding-bottom:30px; flex-wrap:wrap; }
+  .hero-logo-wrap { width:84px; height:84px; flex:0 0 auto; position:relative; }
+  .hero-logo { position:absolute; inset:0; width:84px; height:84px; object-fit:contain; background:#fff; border:1px solid var(--line); border-radius:22px; padding:12px; box-shadow:0 10px 28px rgba(37, 99, 235, 0.18); }
+  .hero-logo-fb { display:flex; align-items:center; justify-content:center; font-size:36px; font-weight:800; color:#fff; background:linear-gradient(135deg, var(--brand) 0%, var(--accent) 100%); border:none; padding:0; box-shadow:0 10px 28px rgba(37, 99, 235, 0.30); }
+  .hero-text { min-width:0; flex:1 1 320px; }
+  .hero-text .eyebrow { margin:0 0 6px; font-size:11.5px; font-weight:800; letter-spacing:.12em; text-transform:uppercase; color:var(--brand); }
+  .hero-text h1 { font-size:30px; line-height:1.12; margin:0 0 8px; color:#0f172a; word-break:break-word; }
+  .hero-text .tag { margin:0; font-size:15px; color:var(--muted); max-width:560px; }
+  .hero-text .tag b { color:var(--brand); }
+  .hero-badge { flex:0 0 auto; display:inline-flex; align-items:center; gap:6px; font-size:11.5px; font-weight:700; color:var(--muted); background:#fff; border:1px solid var(--line); border-radius:999px; padding:7px 13px; text-decoration:none; box-shadow:0 4px 14px rgba(15,23,42,.05); }
+  .hero-badge img { border-radius:3px; }
+  .hero-noacct { display:inline-flex; align-items:center; gap:7px; margin-top:14px; font-size:12.5px; font-weight:700; color:#047857; background:#ecfdf5; border:1px solid #bbf7d0; border-radius:999px; padding:7px 14px; }
+  .hero-noacct svg { color:#16a34a; flex:0 0 auto; }
+  /* V2 — facility header bar + text hero + sidebar cards */
+  .sitehead { background:#fff; border-bottom:1px solid var(--line); }
+  .sitehead-inner { display:flex; align-items:center; justify-content:space-between; gap:18px; padding-top:14px; padding-bottom:14px; flex-wrap:wrap; }
+  .sitehead-id { display:flex; align-items:center; gap:12px; min-width:0; }
+  .sitehead-logo-wrap { width:46px; height:46px; flex:0 0 auto; position:relative; }
+  .sitehead-logo { position:absolute; inset:0; width:46px; height:46px; object-fit:contain; background:#fff; border:1px solid var(--line); border-radius:12px; padding:7px; }
+  .sitehead-logo-fb { display:flex; align-items:center; justify-content:center; font-size:20px; font-weight:800; color:#fff; background:linear-gradient(135deg, var(--brand) 0%, var(--accent) 100%); border:none; padding:0; }
+  .sitehead-text { min-width:0; display:flex; flex-direction:column; }
+  .sitehead-name { font-size:16px; font-weight:800; color:#0f172a; line-height:1.2; word-break:break-word; }
+  .sitehead-tag { font-size:12.5px; color:var(--muted); }
+  .sitehead-contact { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .sitehead-meta { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:#334155; background:#f8fafc; border:1px solid var(--line); border-radius:999px; padding:6px 11px; text-decoration:none; }
+  .sitehead-meta svg { color:var(--brand); flex:0 0 auto; }
+  .hero-text h1 { font-size:34px; line-height:1.12; margin:0 0 10px; color:#0f172a; }
+  .hero-badge { display:inline-flex; align-items:center; gap:7px; font-size:11px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:var(--brand); background:#eef4ff; border:1px solid rgba(37,99,235,.25); border-radius:999px; padding:6px 12px; margin-bottom:12px; }
+  .hero-sub { font-size:15.5px; line-height:1.6; color:var(--muted); margin:0 0 16px; max-width:600px; }
+  .svc-list { list-style:none; margin:0; padding:0; }
+  .svc-list li { display:flex; align-items:flex-start; gap:9px; padding:7px 0; font-size:13px; color:#334155; border-bottom:1px dashed #eef2f7; }
+  .svc-list li:last-child { border-bottom:none; }
+  .svc-list li svg { color:var(--accent); margin-top:3px; flex:0 0 auto; }
+  .contact-line { font-size:13px; color:var(--muted); line-height:1.55; margin:0 0 12px; }
+  .foot-links { margin-left:10px; color:var(--muted); }
+  .foot-links a { color:var(--muted); text-decoration:none; margin-left:6px; }
+  .chips { display:flex; gap:10px; flex-wrap:wrap; margin-top:18px; }
+  .chip { display:inline-flex; align-items:center; gap:8px; font-size:13px; color:#334155; background:#fff; border:1px solid var(--line); border-radius:12px; padding:9px 14px; text-decoration:none; box-shadow:0 4px 14px rgba(15,23,42,.04); }
+  .chip svg { color:var(--brand); flex:0 0 auto; }
+  .welcome { position:relative; margin:0 0 24px; background:#fff; border:1px solid var(--line); border-left:3px solid var(--brand); border-radius:0 14px 14px 0; padding:13px 18px; font-size:14px; line-height:1.6; color:#334155; max-width:720px; box-shadow:0 4px 14px rgba(15,23,42,.04); }
+  main { padding:28px 0 56px; }
+  .layout { display:grid; grid-template-columns:minmax(0,1fr) 320px; gap:22px; align-items:start; }
+  @media (max-width:880px) { .layout { grid-template-columns:1fr; } }
+  .card { background:#fff; border:1px solid var(--line); border-radius:16px; box-shadow:0 10px 30px rgba(15,23,42,.05); }
+  .widget-card .card-head { padding:18px 22px 0; }
+  .card-head h2 { font-size:16px; margin:0 0 4px; color:#0f172a; }
+  .card-head .hint { font-size:13px; color:var(--muted); margin:0 0 16px; line-height:1.5; }
+  .widget-body { padding:0 22px 22px; }
+  #booking-root { min-height:340px; }
+  .rail { display:flex; flex-direction:column; gap:22px; position:sticky; top:20px; }
+  @media (max-width:880px) { .rail { position:static; } }
+  .rail .card { padding:18px; }
+  .rail h3 { margin:0 0 12px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:#64748b; display:flex; align-items:center; gap:7px; }
+  .rail h3 svg { color:var(--brand); }
+  .info-row { display:flex; gap:10px; align-items:flex-start; padding:10px 0; border-bottom:1px dashed #eef2f7; }
+  .info-row:last-of-type { border-bottom:none; }
+  .info-row svg { color:var(--brand); margin-top:2px; flex:0 0 auto; }
+  .info-row .k { font-size:11.5px; color:var(--muted); margin-bottom:1px; }
+  .info-row .v { font-size:13px; color:#0f172a; font-weight:600; word-break:break-word; }
+  .info-action { display:inline-flex; align-items:center; gap:6px; margin-top:7px; font-size:12px; font-weight:700; color:var(--brand); text-decoration:none; background:#fff; border:1px solid var(--line); border-radius:999px; padding:6px 12px; transition:all .15s ease; }
+  .info-action:hover { border-color:var(--brand); background:var(--soft); }
+  .foot { text-align:center; color:var(--muted); font-size:12.5px; padding:22px 16px 34px; }
+  .foot a { color:var(--brand); text-decoration:none; font-weight:600; }
+  @media (max-width:720px){
+    .wrap { padding-left:16px; padding-right:16px; }
+    .sitehead-inner { padding-top:12px; padding-bottom:12px; gap:10px; }
+    .sitehead-logo-wrap, .sitehead-logo { width:42px; height:42px; }
+    .sitehead-logo { border-radius:10px; padding:6px; }
+    .sitehead-name { font-size:15px; }
+    .sitehead-contact { width:100%; order:3; gap:6px; }
+    .sitehead-meta { font-size:11.5px; padding:6px 10px; gap:5px; }
+    .sitehead-meta svg { width:12px; height:12px; }
+    .hero-inner { padding-top:24px; padding-bottom:20px; gap:14px; }
+    .hero-badge { font-size:10.5px; padding:5px 11px; margin-bottom:10px; }
+    .hero-text h1 { font-size:24px; margin-bottom:8px; }
+    .hero-sub { font-size:14px; margin-bottom:14px; line-height:1.55; }
+    .hero-noacct { font-size:12px; padding:6px 12px; margin-top:12px; }
+    .welcome { margin-bottom:18px; padding:12px 14px; font-size:13.5px; }
+    main { padding:18px 0 34px; }
+    .widget-card .card-head { padding:16px 16px 0; }
+    .widget-card .card-head h2 { font-size:15px; }
+    .card-head .hint { font-size:12.5px; margin-bottom:14px; }
+    .widget-body { padding:0 16px 16px; }
+    .rail { gap:16px; }
+    .rail .card { padding:15px; }
+    .info-action { padding:7px 13px; }
+    .foot { padding:18px 16px 26px; font-size:12px; }
+  }
+  @media (max-width:400px){
+    .hero-text h1 { font-size:22px; }
+    .hero-noacct { font-size:11.5px; padding:5px 11px; }
+    .sitehead-meta { font-size:11px; }
+  }
+</style>
+</head>
+<body>
+<div class="accent-bar"></div>
+<header class="sitehead">
+  <div class="wrap sitehead-inner">
+    <div class="sitehead-id">
+      <div class="sitehead-logo-wrap">
+        <div class="sitehead-logo sitehead-logo-fb">Q</div>
+        <img class="sitehead-logo" src="data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20100%20100%22%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20rx%3D%2222%22%20fill%3D%22%232563EB%22%2F%3E%3Ctext%20x%3D%2250%22%20y%3D%2268%22%20font-size%3D%2254%22%20font-family%3D%22Arial%2CHelvetica%2Csans-serif%22%20font-weight%3D%22bold%22%20fill%3D%22%23fff%22%20text-anchor%3D%22middle%22%3EQ%3C%2Ftext%3E%3C%2Fsvg%3E" alt="Quovadis Dental Studio" onerror="this.remove()" />
+      </div>
+      <div class="sitehead-text">
+        <span class="sitehead-name">Quovadis Dental Studio</span>
+        <span class="sitehead-tag">Gentle, modern dentistry for the whole family</span>
+      </div>
+    </div>
+    <div class="sitehead-contact">
+      <span class="sitehead-meta"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>12B Ahmadu Bello Way, Kano</span>
+      <a class="sitehead-meta" href="tel:+2348035550147"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>+234 803 555 0147</a>
+      <span class="sitehead-meta"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Mon – Sat · 8:00 AM — 5:00 PM</span>
+    </div>
+  </div>
+</header>
+<section class="hero">
+  <div class="wrap hero-inner">
+    <div class="hero-text">
+      <span class="hero-badge"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>Book an appointment</span>
+      <h1>Your health matters. Book your appointment today.</h1>
+      <p class="hero-sub">Quick, easy and no account required. Choose a service, pick a date and time, and we'll take care of the rest.</p>
+      <span class="hero-noacct"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>Book in under a minute. No account required.</span>
+    </div>
+  </div>
+  <div class="wrap"><div class="welcome">Welcome to Quovadis Dental Studio — book online and skip the waiting room. We look forward to seeing you.</div></div>
+</section>
+<main>
+  <div class="wrap layout">
+    <div class="card widget-card">
+      <div class="card-head">
+        <h2>Book an appointment</h2>
+        <p class="hint">Pick a date and time below — the clinic will confirm your booking. No account needed.</p>
+      </div>
+      <div class="widget-body"><div id="booking-root"></div></div>
+    </div>
+    <aside class="rail">
+      <div class="card">
+        <h3><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>Clinic information</h3>
+        <div class="info-row"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg><div><div class="k">Location</div><div class="v">12B Ahmadu Bello Way, Kano</div><a class="info-action" href="https://www.google.com/maps/search/?api=1&amp;query=12B%20Ahmadu%20Bello%20Way%2C%20Kano" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>Get directions</a></div></div>
+        <div class="info-row"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg><div><div class="k">Phone</div><div class="v">+234 803 555 0147</div><a class="info-action" href="tel:+2348035550147"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>Call clinic</a></div></div>
+        <div class="info-row"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><div><div class="k">Opening hours</div><div class="v">8:00 AM — 5:00 PM</div></div></div><div class="info-row"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg><div><div class="k">Open days</div><div class="v">Mon, Tue, Wed, Thu, Fri, Sat</div></div></div>
+      </div>
+      <div class="card">
+        <h3><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>Our services</h3>
+        <ul class="svc-list">
+          <li><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>General Consultation</li>
+          <li><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>Dental Checkup</li>
+          <li><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>Teeth Cleaning</li>
+          <li><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>Root Canal</li>
+          <li><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>Dental X-Ray</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>Need help?</h3>
+        <p class="contact-line">Our team is available to help you with booking or any questions.</p>
+        <a class="info-action" href="https://wa.me/2348035550147" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>Chat on WhatsApp</a>
+      </div>
+      <div class="card">
+        <h3><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>Your information is safe</h3>
+        <p class="contact-line">Your details are securely handled and will only be used for appointment purposes.</p>
+      </div>
+    </aside>
+  </div>
+</main>
+<footer class="foot">Powered by <a href="https://mylikita.com">MyLikita</a><span class="foot-links"><a href="https://mylikita.com/privacy">Privacy Policy</a> · <a href="https://mylikita.com/terms">Terms</a></span></footer>
+
+<script src="http://127.0.0.1:60908/widget/mylikita-booking-widget.min.js"></script>
+<script>
+  if (typeof MyLikitaBookingWidget === 'undefined') {
+    var s = document.createElement('script');
+    s.src = 'http://127.0.0.1:60908/widget/mylikita-booking-widget.min.js';
+    s.onload = function () { MyLikitaBookingWidget.createBookingWidget(document.getElementById('booking-root'), {
+      relayUrl: "https://relay.mylikita.com",
+      websiteKey: "wk_4d2353817e23140abcdd7ac050e5da98",
+      facilityId: "PREVIEW-1",
+      loadProviders: true,
+      showBrand: true,
+      theme: { primary: "#2563EB", primaryDark: "#0745cd", secondary: "#14B8A6", primaryText: '#ffffff' },
+      operatingHours: {"working_days":[1,2,3,4,5,6],"open_time":"08:00","close_time":"17:00","slot_duration":30},
+    }); };
+    document.head.appendChild(s);
+  } else {
+    MyLikitaBookingWidget.createBookingWidget(document.getElementById('booking-root'), {
+      relayUrl: "https://relay.mylikita.com",
+      websiteKey: "wk_4d2353817e23140abcdd7ac050e5da98",
+      facilityId: "PREVIEW-1",
+      loadProviders: true,
+      showBrand: true,
+      theme: { primary: "#2563EB", primaryDark: "#0745cd", secondary: "#14B8A6", primaryText: '#ffffff' },
+      operatingHours: {"working_days":[1,2,3,4,5,6],"open_time":"08:00","close_time":"17:00","slot_duration":30},
+    });
+  }
+</script>
+</body></html>

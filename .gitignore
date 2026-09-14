@@ -2,7 +2,13 @@
 .freebuff/
 .vscode/
 .kiro/
+.commandcode/
 node_modules/
+
+proposal
+plans
+docs
+hospital-website
 
 # Installer build cache (hundreds of MB of runtime downloads; CI rebuilds it)
 deploy/windows-installer/dist/

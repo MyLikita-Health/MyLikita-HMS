@@ -1766,7 +1766,7 @@ function createBookingWidget(element, options = {}) {
     if (typeof renderDateCards === "function") renderDateCards();
     if (typeof showStep === "function") showStep(1);
   }
-  root.replaceChildren(brand, title, subtitle, form, statusView);
+  root.replaceChildren(...[brand, title, subtitle, form, statusView].filter(Boolean));
   let destroyProvidersFetch = null;
   if (opts.trackView) {
     trackPageView({

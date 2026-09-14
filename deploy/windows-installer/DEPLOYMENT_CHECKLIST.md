@@ -55,7 +55,7 @@
 
 **The app works fully without SMS/email.** Fill this in only if you want patient reminders and notifications.
 
-### Termii — SMS (and WhatsApp, optional)
+### Termii — SMS
 
 | # | What you need | Where to get it | Your value | Done |
 |---|---|---|---|---|
@@ -63,7 +63,21 @@
 | T2 | `TERMII_API_KEY` | Settings → Developers → API Keys | `_______________` | ☐ |
 | T3 | `TERMII_SENDER_ID` | Settings → Sender ID → verify a name (e.g. `MyLikita`) | `_______________` | ☐ |
 | T4 | `TERMII_CHANNEL` | Leave `generic` (use `dnd` only if you have a DND sender ID) | `generic` | ☐ |
-| T5 | `TERMII_WHATSAPP_ID` *(optional)* | WhatsApp → Devices → device name | `_______________` | ☐ |
+
+### WhatsApp — Meta Business Cloud API (optional, direct — no Termii)
+
+WhatsApp is sent straight from the server to Meta using ONE centrally-owned
+WhatsApp Business number. Business-initiated messages MUST use pre-approved
+templates — run `node scripts/register-whatsapp-templates.js` on the backend
+after filling these in, and approve the templates in WhatsApp Manager.
+
+| # | What you need | Where to get it | Your value | Done |
+|---|---|---|---|---|
+| W1 | Meta Business account + WhatsApp app | **business.facebook.com** → create Business → WhatsApp → add the Business number | Email: ______________ | ☐ |
+| W2 | `WHATSAPP_ACCESS_TOKEN` | Business Settings → System Users → Generate token (permissions: `whatsapp_business_messaging`, `whatsapp_business_management`) | `_______________` | ☐ |
+| W3 | `WHATSAPP_PHONE_NUMBER_ID` | WhatsApp Manager → API Setup → Phone number ID | `_______________` | ☐ |
+| W4 | `WHATSAPP_BUSINESS_ACCOUNT_ID` *(needed only for the template script)* | WhatsApp Manager → API Setup → WhatsApp Business Account ID | `_______________` | ☐ |
+| W5 | `WHATSAPP_VERIFY_TOKEN` + `WHATSAPP_APP_SECRET` *(optional, webhook only)* | App dashboard → App secret + a token you invent; webhook URL `https://<this-server>/api/whatsapp/webhook` | `_______________` | ☐ |
 
 ### Resend — email
 
@@ -73,6 +87,14 @@
 | R2 | `RESEND_API_KEY` | API Keys → looks like `re_…` | `_______________` | ☐ |
 | R3 | `EMAIL_FROM` | A **verified** sending address in Resend (or `onboarding@resend.dev` for testing) | `_______________` | ☐ |
 
+### Google Gemini — AI clinical summary (optional)
+
+| # | What you need | Where to get it | Your value | Done |
+|---|---|---|---|---|
+| A1 | Account + API key | **aistudio.google.com** → Get API key (starts with `AIza`) | `_______________` | ☐ |
+| A2 | `AI_PROVIDER` | Leave as `gemini` | `gemini` | ☐ |
+| A3 | `GEMINI_MODEL` | **Must be `gemini-flash-latest`** — pinned names like `gemini-2.5-flash` get retired by Google and AI summaries silently stop working (404) | `gemini-flash-latest` | ☐ |
+
 ### Apply the credentials after install
 
 | # | Task | Done |
@@ -80,6 +102,7 @@
 | 17 | Edit `C:\MyLikita\backend\.env` as Administrator (Notepad), fill in the values above, save | ☐ |
 | 18 | Restart the app: open **Admin Command Prompt** → `"C:\MyLikita\runtime\nssm\nssm.exe" restart MyLikita` | ☐ |
 | 19 | Open **Admin → Setup → Reminder Health** → click **Send test SMS** / **Send test email** to verify | ☐ |
+| 19b | If `GEMINI_API_KEY` was set: restart the backend, then open a patient record and confirm the **AI summary** generates (a 404/high-demand error means `GEMINI_MODEL` is a retired name) | ☐ |
 | 20 | In **Reminder Health → Notification channels** panel, tick SMS / WhatsApp / Email as needed, then **Save** | ☐ |
 
 ---
