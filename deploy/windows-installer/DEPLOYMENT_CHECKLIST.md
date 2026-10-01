@@ -93,7 +93,17 @@ after filling these in, and approve the templates in WhatsApp Manager.
 |---|---|---|---|---|
 | A1 | Account + API key | **aistudio.google.com** → Get API key (starts with `AIza`) | `_______________` | ☐ |
 | A2 | `AI_PROVIDER` | Leave as `gemini` | `gemini` | ☐ |
-| A3 | `GEMINI_MODEL` | **Must be `gemini-flash-latest`** — pinned names like `gemini-2.5-flash` get retired by Google and AI summaries silently stop working (404) | `gemini-flash-latest` | ☐ |
+| A3 | `GEMINI_MODEL` | **Must be `gemini-flash-latest`** — pinned names like `gemini-2.5-flash` get retired by Google (404). The backend self-heals by retrying the alias and logging a warning; use the alias to avoid the warning | `gemini-flash-latest` | ☐ |
+
+### OpenAI — alternative AI provider (optional)
+
+Only needed if you prefer OpenAI over Gemini. Same warnings apply.
+
+| # | What you need | Where to get it | Your value | Done |
+|---|---|---|---|---|
+| B1 | `AI_PROVIDER` | Set to `openai` to use OpenAI instead of Gemini | `openai` | ☐ |
+| B2 | `OPENAI_API_KEY` | **platform.openai.com** → API keys (starts with `sk-`) | `_______________` | ☐ |
+| B3 | `OPENAI_MODEL` | **Leave unset** — the code tracks a current default and self-heals (retries a durable fallback model on 404). If you must pin it, use a current model (e.g. `gpt-5-mini`), never an older one | *(blank)* | ☐ |
 
 ### Apply the credentials after install
 
@@ -102,7 +112,7 @@ after filling these in, and approve the templates in WhatsApp Manager.
 | 17 | Edit `C:\MyLikita\backend\.env` as Administrator (Notepad), fill in the values above, save | ☐ |
 | 18 | Restart the app: open **Admin Command Prompt** → `"C:\MyLikita\runtime\nssm\nssm.exe" restart MyLikita` | ☐ |
 | 19 | Open **Admin → Setup → Reminder Health** → click **Send test SMS** / **Send test email** to verify | ☐ |
-| 19b | If `GEMINI_API_KEY` was set: restart the backend, then open a patient record and confirm the **AI summary** generates (a 404/high-demand error means `GEMINI_MODEL` is a retired name) | ☐ |
+| 19b | If `GEMINI_API_KEY` was set: restart the backend, then open a patient record and confirm the **AI summary** generates (a 404/high-demand error means `GEMINI_MODEL` is a retired name; a `[Gemini Provider] ... Retrying` warning in the server log means it self-healed — update `GEMINI_MODEL` to silence it) | ☐ |
 | 20 | In **Reminder Health → Notification channels** panel, tick SMS / WhatsApp / Email as needed, then **Save** | ☐ |
 
 ---

@@ -51,6 +51,13 @@ jobs:
           submodules: recursive
           token: ${{ secrets.MYLIKITA_PAT }}
 
+      # Static SQL guard: fails the build before an image is pushed if any
+      # controller query selects lab_setup-only columns (report_type, subhead,
+      # printable, ...) directly from lab_requisition — the 2026-09-26
+      # ER_BAD_FIELD_ERROR 1054 outage shape.
+      - name: Lint lab_requisition SQL (phantom-column guard)
+        run: node backend/scripts/lint-lab-requisition-columns.js
+
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
