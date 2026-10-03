@@ -122,11 +122,13 @@ jobs:
         run: |
           # npm versions have no leading 'v' (tag v0.1.0 → version 0.1.0).
           # Registry→CDN propagation can take a while on a cold cache, so
-          # retry up to ~100s and dump diagnostics if it still fails.
+          # retry up to ~5 minutes (unpkg cold-cache propagation of a brand-new
+          # version can take minutes, not seconds) and dump diagnostics if it still
+          # fails.
           ver="${GITHUB_REF_NAME#v}"
           url="https://unpkg.com/@mylikita/booking-widget@${ver}"
           ok=""
-          for i in $(seq 1 20); do
+          for i in $(seq 1 60); do
             body="$(curl -fsSL "$url" 2>/dev/null)" || true
             if printf '%s' "$body" | grep -q 'MyLikitaBookingWidget'; then ok=1; break; fi
             sleep 5
@@ -135,7 +137,7 @@ jobs:
             echo "[OK] unpkg serves the IIFE (global MyLikitaBookingWidget)"
           else
             code="$(curl -s -o /tmp/unpkg-body -w '%{http_code}' "$url" || true)"
-            echo "[FAIL] unpkg $url not serving after 20 tries (HTTP $code)"
+            echo "[FAIL] unpkg $url not serving after 60 tries (HTTP $code)"
             head -c 300 /tmp/unpkg-body 2>/dev/null || true
             exit 1
           fi
@@ -211,11 +213,13 @@ jobs:
         run: |
           # npm versions have no leading 'v' (tag v0.1.0 → version 0.1.0).
           # Registry→CDN propagation can take a while on a cold cache, so
-          # retry up to ~100s and dump diagnostics if it still fails.
+          # retry up to ~5 minutes (unpkg cold-cache propagation of a brand-new
+          # version can take minutes, not seconds) and dump diagnostics if it still
+          # fails.
           ver="${GITHUB_REF_NAME#v}"
           url="https://unpkg.com/@mylikita/booking-widget-react@${ver}"
           ok=""
-          for i in $(seq 1 20); do
+          for i in $(seq 1 60); do
             body="$(curl -fsSL "$url" 2>/dev/null)" || true
             if printf '%s' "$body" | grep -q 'createBookingWidget'; then ok=1; break; fi
             sleep 5
@@ -224,7 +228,7 @@ jobs:
             echo "[OK] unpkg serves the bundle (exports createBookingWidget)"
           else
             code="$(curl -s -o /tmp/unpkg-body -w '%{http_code}' "$url" || true)"
-            echo "[FAIL] unpkg $url not serving after 20 tries (HTTP $code)"
+            echo "[FAIL] unpkg $url not serving after 60 tries (HTTP $code)"
             head -c 300 /tmp/unpkg-body 2>/dev/null || true
             exit 1
           fi
