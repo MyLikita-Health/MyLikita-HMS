@@ -185,7 +185,7 @@ jobs:
           Write-Output "Bundle manifest: version=$($m.version) installer_mb=$($m.installer_mb)"
 
           $failed = $false
-          $required = @('backend\app.js','backend\express','frontend\index.html','runtime\node.exe','runtime\mysqld.exe','runtime\nssm.exe','database\prime-db.sql','scripts\postinstall.cmd','widget\mylikita-booking-widget.min.js')
+          $required = @('backend\app.js','backend\express','frontend\index.html','runtime\node.exe','runtime\mysqld.exe','runtime\nssm.exe','runtime\vcredist\VC_redist.x64.exe','database\prime-db.sql','scripts\postinstall.cmd','widget\mylikita-booking-widget.min.js')
           foreach ($name in $required) {
             if ($m.($name)) { Write-Output "[OK] $name" }
             else { Write-Output "[MISSING] $name"; $failed = $true }
@@ -411,6 +411,7 @@ jobs:
           }
           if (-not (Test-Path $log)) { throw "install.log not found at $log - the post-install script did not run. See diagnostics above." }
           if (-not ($tail -match 'post-install COMPLETED')) { throw 'install.log does not end with the COMPLETED marker - the post-install script failed. See diagnostics above.' }
+          if (-not ((Get-Content $log -Raw) -match 'Visual C\+\+ runtime')) { throw 'install.log never ran the Visual C++ runtime step - postinstall.cmd is missing the MSVCP140 fix.' }
           # Dump the backend error log to help diagnose startup crashes
           $errLog = 'C:\MyLikita\logs\err.log'
           if (Test-Path $errLog) {

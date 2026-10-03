@@ -9,7 +9,7 @@ color 0A
 ::  Produces: deploy\windows-installer\dist\output\MyLikita-Setup-<ver>.exe
 ::
 ::  What it does:
-::   1. Downloads Node.js, MySQL (ZIP build) and NSSM into dist\cache
+::   1. Downloads Node.js, MySQL (ZIP), NSSM and the VC++ runtime into dist\cache
 ::   2. Builds the React frontend (with a server-IP placeholder)
 ::   3. Copies the backend and installs its dependencies (prebuilt node_modules)
 ::   4. Copies the Inno Setup script + helper scripts + prime-db.sql
@@ -42,6 +42,7 @@ set "NODE_URL=https://nodejs.org/dist/%NODE_VERSION%/node-%NODE_VERSION%-win-x64
 :: Oracle "Technical Difficulties" page - use the canonical archives URL.
 set "MYSQL_URL=https://cdn.mysql.com/archives/mysql-8.0/mysql-%MYSQL_VERSION%-winx64.zip"
 set "NSSM_URL=https://nssm.cc/release/nssm-%NSSM_VERSION%.zip"
+set "VCREDIST_URL=https://aka.ms/vs/17/release/vc_redist.x64.exe"
 
 echo ============================================================
 echo  MyLikita Installer Build  v%VERSION%
@@ -88,6 +89,7 @@ set "DL=0"
 if not exist "%CACHE%\node-%NODE_VERSION%-win-x64.zip" set "DL=1"
 if not exist "%CACHE%\mysql-%MYSQL_VERSION%-winx64.zip" set "DL=1"
 if not exist "%CACHE%\nssm-%NSSM_VERSION%.zip" set "DL=1"
+if not exist "%CACHE%\vc_redist.x64.exe" set "DL=1"
 
 if "%DL%"=="1" (
     echo  Downloading runtimes into %CACHE%  one-time ~350 MB total...
@@ -104,6 +106,10 @@ if "%DL%"=="1" (
         powershell -NoProfile -ExecutionPolicy Bypass -Command "$ProgressPreference='SilentlyContinue'; Invoke-WebRequest -Uri '%NSSM_URL%' -OutFile '%CACHE%\nssm-%NSSM_VERSION%.zip' -UseBasicParsing"
         if errorlevel 1 set "DLFAIL=1"
     )
+    if not exist "%CACHE%\vc_redist.x64.exe" (
+        powershell -NoProfile -ExecutionPolicy Bypass -Command "$ProgressPreference='SilentlyContinue'; Invoke-WebRequest -Uri '%VCREDIST_URL%' -OutFile '%CACHE%\vc_redist.x64.exe' -UseBasicParsing"
+        if errorlevel 1 set "DLFAIL=1"
+    )
     rem !DLFAIL! (delayed): %-expansion happens once at block entry, before
     rem the set above runs - only delayed expansion sees the updated value.
     if "!DLFAIL!"=="1" (
@@ -118,7 +124,7 @@ if "%DL%"=="1" (
 if "%DOWNLOAD_ONLY%"=="1" (
     echo.
     echo  [OK] Download-only mode: runtimes cached in %CACHE%
-    echo       node, mysql, nssm - exiting before extract/build.
+    echo       node, mysql, nssm, vcredist - exiting before extract/build.
     exit /b 0
 )
 
@@ -143,6 +149,14 @@ if not exist "%RUNTIME%\nssm\nssm.exe" (
     powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive -Path '%CACHE%\nssm-%NSSM_VERSION%.zip' -DestinationPath '%RUNTIME%\tmp-nssm' -Force; Copy-Item '%RUNTIME%\tmp-nssm\nssm-%NSSM_VERSION%\win64\nssm.exe' -Destination '%RUNTIME%\nssm\nssm.exe'"
     if errorlevel 1 (
         echo  [ERROR] Could not extract NSSM.
+        exit /b 1
+    )
+)
+if not exist "%RUNTIME%\vcredist\VC_redist.x64.exe" (
+    if not exist "%RUNTIME%\vcredist" mkdir "%RUNTIME%\vcredist"
+    copy /y "%CACHE%\vc_redist.x64.exe" "%RUNTIME%\vcredist\VC_redist.x64.exe" >nul
+    if errorlevel 1 (
+        echo  [ERROR] Could not copy the VC++ runtime installer into the bundle.
         exit /b 1
     )
 )
@@ -312,7 +326,7 @@ popd
 ::: releases). Every entry is a Test-Path on the ACTUAL assembled bundle.
 echo.
 echo  Writing bundle manifest...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$m=@{}; $f=@{ 'backend\app.js'='%DIST%\backend\app.js'; 'backend\express'='%DIST%\backend\node_modules\express\package.json'; 'frontend\index.html'='%DIST%\frontend\dist\index.html'; 'runtime\node.exe'='%DIST%\runtime\node\node.exe'; 'runtime\mysqld.exe'='%DIST%\runtime\mysql\bin\mysqld.exe'; 'runtime\nssm.exe'='%DIST%\runtime\nssm\nssm.exe'; 'database\prime-db.sql'='%DIST%\database\prime-db.sql'; 'scripts\postinstall.cmd'='%DIST%\scripts\postinstall.cmd'; 'widget\mylikita-booking-widget.min.js'='%DIST%\frontend\dist\widget\mylikita-booking-widget.min.js' }; foreach ($k in $f.Keys) { $m[$k]=[bool](Test-Path $f[$k]) }; $so=Get-ChildItem '%DIST%\frontend\dist' -Recurse -Filter *.js -ErrorAction SilentlyContinue | Select-String -Pattern 'location.origin' -List -SimpleMatch | Select-Object -First 1; $m['same_origin_resolver']=[bool]$so; $wg=Get-Content '%DIST%\frontend\dist\widget\mylikita-booking-widget.min.js' -Raw -ErrorAction SilentlyContinue; $m['widget_global_present']=[bool]($wg -match 'MyLikitaBookingWidget'); $wh=Get-FileHash '%DIST%\frontend\dist\widget\mylikita-booking-widget.min.js' -Algorithm SHA256 -ErrorAction SilentlyContinue; $m['widget_sha256']=if($wh){$wh.Hash}else{$null}; $exe=Get-Item '%DIST%\output\MyLikita-Setup-%VERSION%.exe' -ErrorAction SilentlyContinue; $m['installer_mb']=[math]::Round($exe.Length/1MB); $m['version']='%VERSION%'; $m | ConvertTo-Json | Set-Content '%DIST%\bundle-manifest.json' -Encoding UTF8"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$m=@{}; $f=@{ 'backend\app.js'='%DIST%\backend\app.js'; 'backend\express'='%DIST%\backend\node_modules\express\package.json'; 'frontend\index.html'='%DIST%\frontend\dist\index.html'; 'runtime\node.exe'='%DIST%\runtime\node\node.exe'; 'runtime\mysqld.exe'='%DIST%\runtime\mysql\bin\mysqld.exe'; 'runtime\nssm.exe'='%DIST%\runtime\nssm\nssm.exe'; 'runtime\vcredist\VC_redist.x64.exe'='%DIST%\runtime\vcredist\VC_redist.x64.exe'; 'database\prime-db.sql'='%DIST%\database\prime-db.sql'; 'scripts\postinstall.cmd'='%DIST%\scripts\postinstall.cmd'; 'widget\mylikita-booking-widget.min.js'='%DIST%\frontend\dist\widget\mylikita-booking-widget.min.js' }; foreach ($k in $f.Keys) { $m[$k]=[bool](Test-Path $f[$k]) }; $so=Get-ChildItem '%DIST%\frontend\dist' -Recurse -Filter *.js -ErrorAction SilentlyContinue | Select-String -Pattern 'location.origin' -List -SimpleMatch | Select-Object -First 1; $m['same_origin_resolver']=[bool]$so; $wg=Get-Content '%DIST%\frontend\dist\widget\mylikita-booking-widget.min.js' -Raw -ErrorAction SilentlyContinue; $m['widget_global_present']=[bool]($wg -match 'MyLikitaBookingWidget'); $wh=Get-FileHash '%DIST%\frontend\dist\widget\mylikita-booking-widget.min.js' -Algorithm SHA256 -ErrorAction SilentlyContinue; $m['widget_sha256']=if($wh){$wh.Hash}else{$null}; $exe=Get-Item '%DIST%\output\MyLikita-Setup-%VERSION%.exe' -ErrorAction SilentlyContinue; $m['installer_mb']=[math]::Round($exe.Length/1MB); $m['version']='%VERSION%'; $m | ConvertTo-Json | Set-Content '%DIST%\bundle-manifest.json' -Encoding UTF8"
 if errorlevel 1 (
     echo  [ERROR] Could not write the bundle manifest.
     exit /b 1

@@ -10,7 +10,7 @@
 > This README is the developer's build/support doc.
 
 Produces a **single `.exe`** the client downloads, double-clicks, and is done.
-Everything is embedded in the installer: Node.js, MySQL, NSSM, the backend,
+Everything is embedded in the installer: Node.js, MySQL, NSSM, the VC++ runtime, the backend,
 prebuilt `node_modules`, the built React frontend, and the database dump.
 No internet is required on the client machine during or after install.
 

@@ -72,6 +72,23 @@ if "!SERVER_IP!"=="" (
 if "!SERVER_IP!"=="" set "SERVER_IP=localhost"
 call :log "Server LAN IP detected as: !SERVER_IP!"
 
+:: ------------------------------------------ VC++ runtime (required by MySQL) -
+:: The embedded MySQL ZIP build (mysql.exe / mysqld.exe) links against the
+:: Visual C++ runtime (MSVCP140.dll). Fresh Windows installs often lack it and
+:: pop "mysql.exe - System Error: MSVCP140.dll was not found" mid-install.
+:: Install the bundled VC++ redist silently BEFORE touching MySQL. Exit codes
+:: 0 (installed), 1638 (already latest) and 3010 (reboot pending) are fine;
+:: mysqld below fails loudly if the runtime is still missing.
+set "VCREDIST=%APP_ROOT%\runtime\vcredist\VC_redist.x64.exe"
+if exist "!VCREDIST!" (
+    call :log "Ensuring Visual C++ runtime is installed (MSVCP140.dll)..."
+    "!VCREDIST!" /install /quiet /norestart >> "%INSTALL_LOG%" 2>&1
+    call :log "VC_redist exit code: !errorlevel! (0/1638/3010 = ok)"
+    if not exist "%SystemRoot%\System32\msvcp140.dll" call :log "[WARN] MSVCP140.dll still not present after VC_redist - MySQL may fail to start."
+) else (
+    call :log "[WARN] runtime\vcredist\VC_redist.x64.exe not bundled - skipping Visual C++ runtime install."
+)
+
 :: ============================================================ MYSQL =========
 call :log "------------------------------------------------------------"
 call :log "MySQL setup (port !DB_PORT!)..."
