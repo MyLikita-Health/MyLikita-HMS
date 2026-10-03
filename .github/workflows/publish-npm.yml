@@ -21,9 +21,11 @@ name: Publish npm Packages
 # in `if:` conditions (job- and step-level), so conditions here only use
 # the `github` and `inputs` contexts; the token is passed via step `env`.
 #
-# Subsequent releases: bump the version in BOTH package.json files (and the
-# react wrapper's `@mylikita/booking-widget` dependency to match), then push
-# the matching tag — npm refuses to republish an existing version.
+# Subsequent releases need NO manual version bump: on a tag push each job
+# derives its package.json version from the tag (and the react wrapper's
+# @mylikita/booking-widget dependency pin to match), because the installer's
+# smoke test polls the registry for the widget at the APP tag version. The
+# old manual bump stalled at 1.26.0 and failed every tag since v1.28.0.
 
 on:
   push:
@@ -70,25 +72,21 @@ jobs:
         working-directory: packages/booking-widget
         run: npm run build && npm test
 
-      # Guard against the silent-noop footgun: the publish step below is
-      # idempotent (an already-published version is treated as success), so a
-      # tag pushed without bumping package.json would "succeed" without
-      # publishing anything, then the CDN check would 404 on the tag version
-      # (v0.1.1 tag with a 0.1.0 package). Fail fast with a clear message
-      # instead — npm refuses to republish an existing version, so the fix is
-      # always: bump package.json to the tag version, then re-tag.
-      - name: Assert package version matches the tag
+      # The tag is the source of truth for the package version: the installer
+      # smoke test polls the registry for @mylikita/booking-widget@<app-version>
+      # (bundle-manifest version == tag), so every release tag publishes the
+      # widget at the tag version. Deriving it here replaces the old manual
+      # bump + assert, which stalled at 1.26.0 and failed every tag since
+      # v1.28.0. --allow-same-version keeps re-runs/force-retags green (the
+      # publish step below already treats an existing registry version as OK).
+      - name: Set package version from the tag
         if: ${{ github.event_name == 'push' }}
         working-directory: packages/booking-widget
         shell: bash
         run: |
-          pkg_ver="$(node -p "require('./package.json').version")"
           tag_ver="${GITHUB_REF_NAME#v}"
-          if [ "$pkg_ver" != "$tag_ver" ]; then
-            echo "[FAIL] package.json version ($pkg_ver) does not match tag v$tag_ver. Bump the package version to $tag_ver and re-tag (npm refuses to republish an existing version)."
-            exit 1
-          fi
-          echo "[OK] package version $pkg_ver matches tag v$tag_ver"
+          npm version "$tag_ver" --no-git-tag-version --allow-same-version
+          echo "[OK] package.json version -> $(node -p "require('./package.json').version") (from tag $GITHUB_REF_NAME)"
 
       - name: Publish to npm
         working-directory: packages/booking-widget
@@ -159,6 +157,19 @@ jobs:
           registry-url: 'https://registry.npmjs.org/'
           scope: '@mylikita'
 
+      # Version + widget dependency pin derive from the tag BEFORE npm
+      # install, so the wrapper installs (and is tested against) the widget
+      # version the job above just published at this tag.
+      - name: Set package version from the tag
+        if: ${{ github.event_name == 'push' }}
+        working-directory: packages/booking-widget-react
+        shell: bash
+        run: |
+          tag_ver="${GITHUB_REF_NAME#v}"
+          npm version "$tag_ver" --no-git-tag-version --allow-same-version
+          npm pkg set "dependencies.@mylikita/booking-widget=$tag_ver"
+          echo "[OK] package.json -> $(node -p "const p=require('./package.json'); p.version + ', widget dep ' + p.dependencies['@mylikita/booking-widget']") (from tag $GITHUB_REF_NAME)"
+
       # The wrapper's devDependencies (react, react-dom, jsdom, esbuild) are
       # installed here so build + test run standalone on the runner. npm
       # install also fetches the @mylikita/booking-widget dependency — which
@@ -170,21 +181,6 @@ jobs:
       - name: Build + test (prepublishOnly equivalent)
         working-directory: packages/booking-widget-react
         run: npm run build && npm test
-
-      # Same guard as the widget job: a tag without a matching package.json
-      # bump would no-op the idempotent publish and 404 on the CDN check.
-      - name: Assert package version matches the tag
-        if: ${{ github.event_name == 'push' }}
-        working-directory: packages/booking-widget-react
-        shell: bash
-        run: |
-          pkg_ver="$(node -p "require('./package.json').version")"
-          tag_ver="${GITHUB_REF_NAME#v}"
-          if [ "$pkg_ver" != "$tag_ver" ]; then
-            echo "[FAIL] package.json version ($pkg_ver) does not match tag v$tag_ver. Bump the package version to $tag_ver and re-tag (npm refuses to republish an existing version)."
-            exit 1
-          fi
-          echo "[OK] package version $pkg_ver matches tag v$tag_ver"
 
       - name: Publish to npm
         working-directory: packages/booking-widget-react
