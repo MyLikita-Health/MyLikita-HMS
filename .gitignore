@@ -8,6 +8,9 @@ node_modules/
 proposal
 plans
 docs
+!docs/
+docs/*
+!docs/phase-0-baseline-and-decisions.md
 hospital-website
 
 # Installer build cache (hundreds of MB of runtime downloads; CI rebuilds it)
