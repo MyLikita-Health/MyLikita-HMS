@@ -251,9 +251,10 @@ call :log "Writing backend\.env..."
     echo MAIL_USER=
     echo MAIL_PASS=
     echo.
-    rem ---- SMS via Termii [https://termii.com] - leave empty to disable ----
-    echo TERMII_API_KEY=
-    echo TERMII_SENDER_ID=MyLikita
+    rem ---- SMS via BulkSMSNigeria [https://www.bulksmsnigeria.com] - leave empty to disable ----
+    echo BULKSMSNIGERIA_API_TOKEN=
+    echo BULKSMSNIGERIA_SENDER_ID=MyLikita
+    echo BULKSMSNIGERIA_GATEWAY=otp
     rem ---- WhatsApp via Meta Cloud API - fill in WHATSAPP_* below (see OFFLINE_INSTALLATION_GUIDE, section 5.1) ----
     echo WHATSAPP_ACCESS_TOKEN=
     echo WHATSAPP_PHONE_NUMBER_ID=

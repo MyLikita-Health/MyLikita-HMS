@@ -51,20 +51,20 @@
 
 ---
 
-## ☐ SMS & Email setup — Termii + Resend (optional)
+## ☐ SMS & Email setup — BulkSMS Nigeria + Resend (optional)
 
 **The app works fully without SMS/email.** Fill this in only if you want patient reminders and notifications.
 
-### Termii — SMS
+### BulkSMS Nigeria — SMS
 
 | # | What you need | Where to get it | Your value | Done |
 |---|---|---|---|---|
-| T1 | Account | **termii.com** → create free account | Email: ______________ | ☐ |
-| T2 | `TERMII_API_KEY` | Settings → Developers → API Keys | `_______________` | ☐ |
-| T3 | `TERMII_SENDER_ID` | Settings → Sender ID → verify a name (e.g. `MyLikita`) | `_______________` | ☐ |
-| T4 | `TERMII_CHANNEL` | Leave `generic` (use `dnd` only if you have a DND sender ID) | `generic` | ☐ |
+| T1 | Account | **bulksmsnigeria.com** → create free account | Email: ______________ | ☐ |
+| T2 | `BULKSMSNIGERIA_API_TOKEN` | Dashboard → Settings → API | `_______________` | ☐ |
+| T3 | `BULKSMSNIGERIA_SENDER_ID` | Sender IDs → approved alphanumeric ID (e.g. `MyLikita`) | `_______________` | ☐ |
+| T4 | `BULKSMSNIGERIA_GATEWAY` | Leave `otp` for transactional traffic (OTP codes, reminders, results) | `otp` | ☐ |
 
-### WhatsApp — Meta Business Cloud API (optional, direct — no Termii)
+### WhatsApp — Meta Business Cloud API (optional, direct — no aggregator)
 
 WhatsApp is sent straight from the server to Meta using ONE centrally-owned
 WhatsApp Business number. Business-initiated messages MUST use pre-approved

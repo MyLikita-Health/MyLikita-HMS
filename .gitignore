@@ -12,8 +12,13 @@ docs
 docs/*
 !docs/phase-0-baseline-and-decisions.md
 hospital-website
+medilinka
 
 # Installer build cache (hundreds of MB of runtime downloads; CI rebuilds it)
 deploy/windows-installer/dist/
 packages/booking-widget/dist/
 packages/booking-widget/node_modules/
+
+.cloud-attachments
+.tmp*
+screenshots

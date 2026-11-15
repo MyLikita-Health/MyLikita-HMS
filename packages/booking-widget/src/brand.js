@@ -6,7 +6,7 @@
  * and renders identically on every host page regardless of their origin.
  * The vector mark stays razor-sharp at any size.
  *
- * The mark (frontend/public/icons/mylikita-mark.svg) is a 6-block pixel-art
+ * The mark (frontend/public/brand/mylikita-mark.svg) is a 6-block pixel-art
  * symbol: dark #0169DA top bar + upper arms, light #0498FB lower arms +
  * bottom bar, with the hollow middle gap preserved.
  *

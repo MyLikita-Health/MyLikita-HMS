@@ -33,7 +33,7 @@ couple of standard prompts, and wait a few minutes. That's it.
 ## 1.1 SMS / email configuration sheet (optional — fill in before install)
 
 MyLikita sends appointment reminders and notifications by **SMS**, **WhatsApp**
-and **email** through **Termii** (SMS), **Meta** (WhatsApp — direct Cloud API,
+and **email** through **BulkSMS Nigeria** (SMS), **Meta** (WhatsApp — direct Cloud API,
 no gateway) and **Resend** (email). The app works fully without these — but if
 you want patients to receive reminders, the server needs the credentials below.
 
@@ -45,16 +45,16 @@ handy thing to give whoever does the installation.
 > drawer or a password manager, and never email it as plain text. Anyone who
 > has these keys can spend SMS/email credit on the accounts.
 
-### Termii — SMS
+### BulkSMS Nigeria — SMS
 
 | # | What you need | Where to find it | Your value (fill in) |
 |---|---|---|---|
-| 1 | **Termii account** | Create a free account at **termii.com** | Account email: ________________ |
-| 2 | **API Key** → `TERMII_API_KEY` | Termii → *Settings → Developers → API Keys* | _______________________________ |
-| 3 | **Sender ID** → `TERMII_SENDER_ID` | *Settings → Sender ID* — verify an alphanumeric ID (e.g. `MyLikita`). This is the name patients see on their phone | ________________ (default `MyLikita`) |
-| 4 | **Channel** → `TERMII_CHANNEL` | Leave `generic` unless you have a DND (marketing) sender ID | `generic` / `dnd` |
+| 1 | **BulkSMS Nigeria account** | Create a free account at **bulksmsnigeria.com** | Account email: ________________ |
+| 2 | **API Token** → `BULKSMSNIGERIA_API_TOKEN` | BulkSMS Nigeria → *Settings → API* | _______________________________ |
+| 3 | **Sender ID** → `BULKSMSNIGERIA_SENDER_ID` | *Sender IDs* — an approved alphanumeric ID (e.g. `MyLikita`). This is the name patients see on their phone | ________________ (default `MyLikita`) |
+| 4 | **Gateway** → `BULKSMSNIGERIA_GATEWAY` | Leave `otp` for transactional traffic (OTP codes, reminders, results) | `otp` / `direct-refund` |
 
-**Checklist (tick when done):** ☐ Termii account created · ☐ Sender ID verified · ☐ API key copied
+**Checklist (tick when done):** ☐ BulkSMS Nigeria account created · ☐ Sender ID approved · ☐ API token copied
 
 ### WhatsApp — Meta Business Cloud API (optional, direct)
 
@@ -233,21 +233,22 @@ channel as **"NOT configured"** so you know why nothing is being sent.
 > If you filled in the **configuration sheet** in section 1.1, type the values
 > from it into `.env` below — each line tells you which key it maps to.
 
-**SMS — Termii** (termii.com):
+**SMS — BulkSMS Nigeria** (bulksmsnigeria.com):
 
-1. Create a free account at termii.com and get an **API Key** from
-   *Settings → Developers → API Keys*.
-2. Verify a **Sender ID** (e.g. `MyLikita`) — this is the name patients see on
-their phone.
+1. Create a free account at bulksmsnigeria.com and get an **API Token** from
+   *Settings → API*.
+2. Use your approved **Sender ID** (e.g. `MyLikita`) — this is the name patients
+see on their phone.
 3. On the server, edit `C:\MyLikita\backend\.env` with Notepad (run Notepad as
-Administrator), fill in the key, and save:
+Administrator), fill in the token, and save:
    ```
-   TERMII_API_KEY=YourTermiiApiKeyHere
-   TERMII_SENDER_ID=MyLikita
+   BULKSMSNIGERIA_API_TOKEN=YourBulkSMSNigeriaTokenHere
+   BULKSMSNIGERIA_SENDER_ID=MyLikita
+   BULKSMSNIGERIA_GATEWAY=otp
    ```
 4. *(Optional — WhatsApp, direct to Meta)* In the same `.env` file, add the
    **Meta WhatsApp Business Cloud API** credentials (the platform's one shared
-   WhatsApp Business number — no Termii, no gateway):
+   WhatsApp Business number — no aggregator, no gateway):
    ```
    WHATSAPP_ACCESS_TOKEN=<System-User token with WhatsApp permissions>
    WHATSAPP_PHONE_NUMBER_ID=<Phone number ID from WhatsApp Manager → API Setup>
@@ -299,7 +300,7 @@ and WhatsApp, or turn WhatsApp off while you test it.
 
    | Channel | What it sends | Notes |
    |---|---|---|
-   | **SMS (Termii)** | Text messages to patients' phones | Needs `TERMII_API_KEY` (section 5.1) |
+   | **SMS (BulkSMS Nigeria)** | Text messages to patients' phones | Needs `BULKSMSNIGERIA_API_TOKEN` (section 5.1) |
    | **WhatsApp (Meta)** | WhatsApp messages to patients' phones | Needs `WHATSAPP_ACCESS_TOKEN` + `WHATSAPP_PHONE_NUMBER_ID` (section 5.1 step 4) + approved templates |
    | **Email (Resend)** | Emails to patients | Needs `RESEND_API_KEY` + `EMAIL_FROM` (section 5.1) |
    | **In-app bell** | Reminders shown inside MyLikita (no SMS/email cost) | Works fully offline; the notification bell in the top bar is separate and always on |
@@ -332,7 +333,7 @@ and WhatsApp, or turn WhatsApp off while you test it.
   per-user setting, so whichever was saved last wins.
 
 > **The in-app channel works even fully offline** (no SMS/email credit
-> needed). It is the recommended default if a clinic has no Termii/Resend
+> needed). It is the recommended default if a clinic has no BulkSMS Nigeria/Resend
 > accounts yet — leave it ticked on.
 
 ---
