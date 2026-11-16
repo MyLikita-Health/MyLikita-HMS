@@ -19,7 +19,7 @@
   powershell -ExecutionPolicy Bypass -File verify-exe-icon.ps1 `
     -ExePath dist\output\MyLikita-Setup-1.0.0.exe `
     -IcoPath dist\mylikita.ico `
-    -ExpectedIcoPaths dist\frontend\dist\icons\favicon.ico, frontend\public\icons\favicon.ico
+    -ExpectedIcoPaths dist\frontend\dist\brand\favicon.ico, frontend\public\brand\favicon.ico
 
   Exits 0 when the exe embeds every icon image byte-identical and the chain
   matches; exits 1 otherwise.

@@ -116,7 +116,7 @@ jobs:
           & 'deploy\windows-installer\verify-exe-icon.ps1' `
             -ExePath $exe.FullName `
             -IcoPath (Join-Path $dist 'mylikita.ico') `
-            -ExpectedIcoPaths (Join-Path $dist 'frontend\dist\icons\favicon.ico'), 'frontend\public\icons\favicon.ico'
+            -ExpectedIcoPaths (Join-Path $dist 'frontend\dist\brand\favicon.ico'), 'frontend\public\brand\favicon.ico'
           if ($LASTEXITCODE -ne 0) { throw 'Icon verification failed — see [FAIL]/[MISSING] lines above.' }
 
       # Uploaded so the smoke-test job can download and inspect it. The

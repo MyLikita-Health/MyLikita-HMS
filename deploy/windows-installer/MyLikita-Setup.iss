@@ -51,7 +51,7 @@ SetupIconFile=mylikita.ico
 ; build-installer.bat alongside mylikita.ico.
 WizardImageFile=wizard-side.bmp
 WizardSmallImageFile=wizard-small.bmp
-UninstallDisplayIcon={app}\frontend\dist\icons\favicon.ico
+UninstallDisplayIcon={app}\frontend\dist\brand\favicon.ico
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -60,12 +60,12 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 ; Desktop shortcut - opens MyLikita in a standalone app-style window
 ; (Edge/Chrome --app= mode) via the launcher, falling back to the default
 ; browser. Users never have to type or memorize http://localhost:46990/.
-Name: "{autodesktop}\MyLikita Hospital System"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\scripts\launch-app.vbs"""; WorkingDir: "{app}"; IconFilename: "{app}\frontend\dist\icons\favicon.ico"; Comment: "Open MyLikita"
+Name: "{autodesktop}\MyLikita Hospital System"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\scripts\launch-app.vbs"""; WorkingDir: "{app}"; IconFilename: "{app}\frontend\dist\brand\favicon.ico"; Comment: "Open MyLikita"
 
 ; Start Menu shortcuts
-Name: "{autoprograms}\MyLikita Hospital System\MyLikita Hospital System"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\scripts\launch-app.vbs"""; WorkingDir: "{app}"; IconFilename: "{app}\frontend\dist\icons\favicon.ico"; Comment: "Open MyLikita in an app window"
-Name: "{autoprograms}\MyLikita Hospital System\Open in Browser"; Filename: "http://localhost:46990/"; IconFilename: "{app}\frontend\dist\icons\favicon.ico"; Comment: "Open MyLikita in your default browser"
-Name: "{autoprograms}\MyLikita Hospital System\Uninstall MyLikita"; Filename: "{uninstallexe}"; IconFilename: "{app}\frontend\dist\icons\favicon.ico"
+Name: "{autoprograms}\MyLikita Hospital System\MyLikita Hospital System"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\scripts\launch-app.vbs"""; WorkingDir: "{app}"; IconFilename: "{app}\frontend\dist\brand\favicon.ico"; Comment: "Open MyLikita in an app window"
+Name: "{autoprograms}\MyLikita Hospital System\Open in Browser"; Filename: "http://localhost:46990/"; IconFilename: "{app}\frontend\dist\brand\favicon.ico"; Comment: "Open MyLikita in your default browser"
+Name: "{autoprograms}\MyLikita Hospital System\Uninstall MyLikita"; Filename: "{uninstallexe}"; IconFilename: "{app}\frontend\dist\brand\favicon.ico"
 
 [Files]
 ; Backend (includes prebuilt node_modules). Excluded: uploads (runtime data),

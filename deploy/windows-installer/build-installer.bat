@@ -271,17 +271,17 @@ copy /y "%ROOT%\backend\prime-db.sql" "%DIST%\database\prime-db.sql" >nul
 
 rem ------------------------------------------------------ installer icon ----
 rem The Inno script's SetupIconFile + shortcut icons come from the app favicon
-rem (committed at frontend\public\icons\favicon.ico and copied to dist by Vite).
+rem (committed at frontend\public\brand\favicon.ico and copied to dist by Vite).
 rem If it is ever missing the build MUST fail loudly - the .iss references
 rem SetupIconFile=mylikita.ico unconditionally, so a silent "fallback" would
 rem just produce a confusing ISCC compile error later.
-if not exist "%DIST%\frontend\dist\icons\favicon.ico" (
+if not exist "%DIST%\frontend\dist\brand\favicon.ico" (
     echo  [ERROR] frontend favicon.ico not found - the installer needs it for
     echo          SetupIconFile and the desktop/Start Menu shortcut icons.
-    echo          Expected at: %DIST%\frontend\dist\icons\favicon.ico
+    echo          Expected at: %DIST%\frontend\dist\brand\favicon.ico
     exit /b 1
 )
-copy /y "%DIST%\frontend\dist\icons\favicon.ico" "%DIST%\mylikita.ico" >nul
+copy /y "%DIST%\frontend\dist\brand\favicon.ico" "%DIST%\mylikita.ico" >nul
 echo  [OK] Installer icon: mylikita.ico
 
 rem -------------------------------------------------- wizard branding -----
