@@ -131,24 +131,49 @@ if "%DOWNLOAD_ONLY%"=="1" (
 :: ------------------------------------------------------ extract runtimes ----
 echo  Extracting runtimes...
 if not exist "%RUNTIME%\node\node.exe" (
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive -Path '%CACHE%\node-%NODE_VERSION%-win-x64.zip' -DestinationPath '%RUNTIME%\tmp-node' -Force; Move-Item '%RUNTIME%\tmp-node\node-%NODE_VERSION%-win-x64' '%RUNTIME%\node'"
+    rem Use the runner's bsdtar, not Expand-Archive: Windows PowerShell's
+    rem -Force path intermittently fails with "Cannot find an overload for
+    rem ExtractToDirectory" on the GitHub Windows image, which broke nightly
+    rem builds while the same commit built fine on a tag run.
+    if exist "%RUNTIME%\tmp-node" rmdir /s /q "%RUNTIME%\tmp-node"
+    mkdir "%RUNTIME%\tmp-node"
+    tar -xf "%CACHE%\node-%NODE_VERSION%-win-x64.zip" -C "%RUNTIME%\tmp-node"
     if errorlevel 1 (
         echo  [ERROR] Could not extract Node.js.
         exit /b 1
     )
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Move-Item '%RUNTIME%\tmp-node\node-%NODE_VERSION%-win-x64' '%RUNTIME%\node'"
+    if errorlevel 1 (
+        echo  [ERROR] Could not move the extracted Node.js runtime into place.
+        exit /b 1
+    )
 )
 if not exist "%RUNTIME%\mysql\bin\mysqld.exe" (
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive -Path '%CACHE%\mysql-%MYSQL_VERSION%-winx64.zip' -DestinationPath '%RUNTIME%\tmp-mysql' -Force; Move-Item '%RUNTIME%\tmp-mysql\mysql-%MYSQL_VERSION%-winx64' '%RUNTIME%\mysql'"
+    if exist "%RUNTIME%\tmp-mysql" rmdir /s /q "%RUNTIME%\tmp-mysql"
+    mkdir "%RUNTIME%\tmp-mysql"
+    tar -xf "%CACHE%\mysql-%MYSQL_VERSION%-winx64.zip" -C "%RUNTIME%\tmp-mysql"
     if errorlevel 1 (
         echo  [ERROR] Could not extract MySQL.
+        exit /b 1
+    )
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Move-Item '%RUNTIME%\tmp-mysql\mysql-%MYSQL_VERSION%-winx64' '%RUNTIME%\mysql'"
+    if errorlevel 1 (
+        echo  [ERROR] Could not move the extracted MySQL runtime into place.
         exit /b 1
     )
 )
 if not exist "%RUNTIME%\nssm\nssm.exe" (
     if not exist "%RUNTIME%\nssm" mkdir "%RUNTIME%\nssm"
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive -Path '%CACHE%\nssm-%NSSM_VERSION%.zip' -DestinationPath '%RUNTIME%\tmp-nssm' -Force; Copy-Item '%RUNTIME%\tmp-nssm\nssm-%NSSM_VERSION%\win64\nssm.exe' -Destination '%RUNTIME%\nssm\nssm.exe'"
+    if exist "%RUNTIME%\tmp-nssm" rmdir /s /q "%RUNTIME%\tmp-nssm"
+    mkdir "%RUNTIME%\tmp-nssm"
+    tar -xf "%CACHE%\nssm-%NSSM_VERSION%.zip" -C "%RUNTIME%\tmp-nssm"
     if errorlevel 1 (
         echo  [ERROR] Could not extract NSSM.
+        exit /b 1
+    )
+    copy /y "%RUNTIME%\tmp-nssm\nssm-%NSSM_VERSION%\win64\nssm.exe" "%RUNTIME%\nssm\nssm.exe" >nul
+    if errorlevel 1 (
+        echo  [ERROR] Could not copy NSSM into the bundle.
         exit /b 1
     )
 )

@@ -1296,7 +1296,6 @@ jobs:
           $hdr = @{ Authorization = "Bearer $($login.token.Substring(7))" }
 
           $deadline = (Get-Date).AddMinutes(3)
-          $pulled = $false
           $skipReason = $null
           while ((Get-Date) -lt $deadline) {
             try {
@@ -1304,16 +1303,17 @@ jobs:
               Write-Output "sync-now -> $($sn | ConvertTo-Json -Compress -Depth 4)"
               # Fail fast ONLY on a config problem (not_configured). A 'busy'
               # skip is the 2-min cron holding the single-flight lock - benign,
-              # just retry (the cron will pull the booking itself anyway).
+              # just retry; the cron pulls the booking itself. Do not require
+              # pulled>=1: the cron may already have imported and acked it, so
+              # the appt_master assertion below is the real outcome gate.
               if ($sn.success -and $sn.data.skipped -and $sn.data.reason -eq 'not_configured') { $skipReason = $sn.data.reason; break }
-              if ($sn.success -and $sn.data.pulled -ge 1) { $pulled = $true; break }
+              if ($sn.success -and $sn.data.pulled -ge 1) { break }
             } catch {
               Write-Output "sync-now attempt failed (retrying): $($_.Exception.Message)"
             }
             Start-Sleep -Seconds 10
           }
           if ($skipReason) { throw "sync-now skipped: $skipReason - relay not configured on the server." }
-          if (-not $pulled) { throw 'The relay pull did not import the website booking within 3 minutes.' }
 
           # The booking must be in appt_master as a WEBSITE row.
           function Read-Env($path) {
@@ -1469,29 +1469,36 @@ jobs:
           if ($dumpAText -notmatch 'data-ci-ref="MLB-') { throw "Widget did not book via the real relay:`n$($dumpAText.Substring(0, [Math]::Min(3000, $dumpAText.Length)))" }
           Write-Output '[OK] Phase A - widget submitted a booking through the real relay.'
 
-          # Pull it into appt_master. Nothing triggers the hospital pull except
-          # the 2-min cron or an explicit sync-now, so drive sync-now in a
-          # bounded loop (same pattern as the sibling B4 step) BEFORE asserting
-          # the row - otherwise the query would race the cron.
-          $deadline = (Get-Date).AddMinutes(3); $pulled = $false; $skipReason = $null
+          # Pull it into appt_master. The 2-min relay cron can import and ack
+          # the booking before our explicit sync-now runs; in that case
+          # sync-now correctly reports pulled=0 even though the row is already
+          # there. Poll the OUTCOME (the appt_master row), not the trigger's
+          # pulled count, so a cron win is not reported as a failed pull.
+          function Get-WidgetRow {
+            (& $mysql -u root "--password=$pw" "--port=$dbPort" -N -s -e "SELECT id, source, status FROM appt_master WHERE external_ref='$extRef' LIMIT 1" $db).Trim()
+          }
+          $deadline = (Get-Date).AddMinutes(3); $row = $null; $skipReason = $null
           while ((Get-Date) -lt $deadline) {
+            $row = Get-WidgetRow
+            if ($row) { break }
             try {
               $sn = Invoke-RestMethod -Uri 'http://localhost:46990/settings/relay/sync-now' -Method Post -Headers $hdr -ContentType 'application/json' -Body '{}' -TimeoutSec 60
               Write-Output "sync-now -> $($sn | ConvertTo-Json -Compress -Depth 4)"
               if ($sn.success -and $sn.data.skipped -and $sn.data.reason -eq 'not_configured') { $skipReason = $sn.data.reason; break }
-              if ($sn.success -and $sn.data.pulled -ge 1) { $pulled = $true; break }
+              if ($sn.success -and $sn.data.pulled -ge 1) {
+                $row = Get-WidgetRow
+                if ($row) { break }
+              }
             } catch {
               Write-Output "sync-now attempt failed (retrying): $($_.Exception.Message)"
             }
             Start-Sleep -Seconds 10
           }
           if ($skipReason) { throw "sync-now skipped: $skipReason - relay not configured on the server." }
-          if (-not $pulled) { throw 'The relay pull did not import the widget booking within 3 minutes.' }
+          if (-not $row) { throw "No appt_master row for external_ref=$extRef after 3 minutes - the widget booking was not imported by either the cron or sync-now." }
 
           # The booking must be in appt_master as a WEBSITE row.
-          $row = (& $mysql -u root "--password=$pw" "--port=$dbPort" -N -s -e "SELECT id, source, status FROM appt_master WHERE external_ref='$extRef' LIMIT 1" $db).Trim()
           if ($LASTEXITCODE -ne 0) { throw "MySQL query failed while checking the widget booking (exit $LASTEXITCODE)." }
-          if (-not $row) { throw "No appt_master row for external_ref=$extRef - the widget booking was not imported by the pull." }
           $parts = $row -split "`t"
           if ($parts[1] -ne 'website') { throw "source is '$($parts[1])', expected 'website'." }
           Write-Output "[OK] Widget booking in appt_master id=$($parts[0]) source=$($parts[1]) status=$($parts[2])."
